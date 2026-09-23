@@ -1,6 +1,6 @@
 {
-    "name": "Reflectis.CreatorKit.Worlds.Setup.Editor",
-    "rootNamespace": "Reflectis.CreatorKit.Worlds.Setup.Editor",
+    "name": "Virtuademy.SDK.Environments.Setup.Editor",
+    "rootNamespace": "Virtuademy.SDK.Environments.Setup.Editor",
     "references": [],
     "includePlatforms": [
         "Editor"

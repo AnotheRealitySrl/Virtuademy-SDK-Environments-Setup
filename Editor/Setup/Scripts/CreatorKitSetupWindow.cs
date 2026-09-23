@@ -25,7 +25,7 @@ using UnityEngine.Events;
 using UnityEngine.Rendering;
 using UnityEngine.UIElements;
 
-namespace Reflectis.CreatorKit.Worlds.Setup.Editor
+namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     public class CreatorKitSetupWindow : EditorWindow
     {
@@ -96,10 +96,11 @@ namespace Reflectis.CreatorKit.Worlds.Setup.Editor
             "com.anotherealitysrl.spacs",
         };
 
-        // The installer excludes itself. Listed under both names for the same reason as above.
+        // The installer excludes itself. Listed under both names for the same reason as above:
+        // a project installed before the rename still carries the old id.
         private readonly List<string> packages_to_exclude = new()
         {
-            "com.anotherealitysrl.virtuademy-creatorkit-worlds-setup",
+            "com.anotherealitysrl.virtuademy-sdk-environments-setup",
             "com.anotherealitysrl.reflectis-creatorkit-worlds-setup",
         };
 
@@ -645,7 +646,7 @@ namespace Reflectis.CreatorKit.Worlds.Setup.Editor
             if (getIssue == null)
             {
                 projectConfig.InterpreterIssue =
-                    "The Creator Kit Core package is older than this setup window (HotUpdateSetupper.GetSetupIssue is missing).";
+                    "The Virtuademy-SDK-Environments package is older than this setup window (HotUpdateSetupper.GetSetupIssue is missing).";
                 UnityEngine.Debug.LogWarning("[Setup] " + projectConfig.InterpreterIssue);
                 return;
             }
@@ -709,7 +710,7 @@ namespace Reflectis.CreatorKit.Worlds.Setup.Editor
             if (projectConfig.IsHybridCLRInstalled)
             {
                 UnityEngine.Debug.LogError("[Setup] HybridCLR is installed but HotUpdateSetupper did not " +
-                                           "compile. Fix the compilation errors in the Creator Kit Core " +
+                                           "compile. Fix the compilation errors in the Virtuademy-SDK-Environments " +
                                            "package and press the button again.");
                 return;
             }
@@ -751,8 +752,8 @@ namespace Reflectis.CreatorKit.Worlds.Setup.Editor
             setupperType.GetMethod("Setup", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
         }
 
-        /// <summary>The setupper ships with the Creator Kit Core package but only compiles once
-        /// HybridCLR is installed, so it can only be reached by reflection.</summary>
+        /// <summary>The setupper ships with the Virtuademy-SDK-Environments package but only
+        /// compiles once HybridCLR is installed, so it can only be reached by reflection.</summary>
         private static Type FindSetupperType()
             => AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
@@ -1033,7 +1034,7 @@ namespace Reflectis.CreatorKit.Worlds.Setup.Editor
                         //old packages
                         if (!IsPackageInstalledAsDependency(package))
                         {
-                            ShowAlertDialog("Warning", $"The package \n{package.Name}\n is not available in the selected Reflectis version\n and has been uninstalled.", null);
+                            ShowAlertDialog("Warning", $"The package \n{package.Name}\n is not available in the selected Virtuademy version\n and has been uninstalled.", null);
                         }
 
                         packageManagerConfig.InstalledPackages.Remove(package);

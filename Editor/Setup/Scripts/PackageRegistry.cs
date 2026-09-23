@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace Reflectis.CreatorKit.Worlds.Setup.Editor
+namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     [Serializable]
     [Newtonsoft.Json.JsonObject(Newtonsoft.Json.MemberSerialization.Fields)]

@@ -7,7 +7,7 @@ using Unity.Properties;
 using UnityEngine;
 using UnityEngine.Events;
 
-namespace Reflectis.CreatorKit.Worlds.Setup.Editor
+namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     [CreateAssetMenu(fileName = "CreatorKitSetupConfiguration", menuName = "Virtuademy/Setup/SetupConfiguration")]
     public class PackageManagerConfiguration : ScriptableObject

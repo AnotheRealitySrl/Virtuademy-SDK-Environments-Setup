@@ -1,4 +1,4 @@
-# Reflectis-CreatorKit-Worlds-Setup
+# Virtuademy-SDK-Environments-Setup
 
 The Creator Kit installer. A creator adds **this** package by git URL, by hand, and everything else
 arrives through it — so it is the one package whose own URL has to be typed.
@@ -81,3 +81,12 @@ that case is handled and no longer needs an empty array to avoid an exception.
   are stored with line endings that git normalizes on checkout, so `git status` reports changes
   nobody made. See the meta-repo's `docs/line-endings.md` for the platform policy; this repo has
   not had that pass.
+- **Renamed on 2026-09-23, and the old id does not resolve the new package.** This package was
+  `com.anotherealitysrl.reflectis-creatorkit-worlds-setup` (namespace
+  `Reflectis.CreatorKit.Worlds.Setup.Editor`); it is now
+  `com.anotherealitysrl.virtuademy-sdk-environments-setup` (`Virtuademy.SDK.Environments.Setup.Editor`).
+  A project that re-resolves this package under the old manifest key is expected to stop resolving,
+  because the key no longer matches the name in `package.json` (not yet observed on a real project). Such a project must run
+  `Virtuademy ▸ Update routines ▸ v2026.5 -> v2026.6` (shipped in `Virtuademy-SDK-Environments`)
+  first: it rewrites the key and the URL and deletes `packages-lock.json`. The old id stays in the
+  self-exclusion list of `CreatorKitSetupWindow` for projects that have not migrated yet.

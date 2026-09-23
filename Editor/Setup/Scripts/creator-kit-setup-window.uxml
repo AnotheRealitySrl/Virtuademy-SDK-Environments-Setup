@@ -1,7 +1,7 @@
 <engine:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:engine="UnityEngine.UIElements" xmlns:editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
-    <Style src="project://database/Packages/com.anotherealitysrl.reflectis-creatorkit-worlds-setup/Editor/Setup/Scripts/styles.uss?fileID=7433441132597879392&amp;guid=ca7a0c867793b12469d64e21b6c3abe7&amp;type=3#styles" />
+    <Style src="project://database/Packages/com.anotherealitysrl.virtuademy-sdk-environments-setup/Editor/Setup/Scripts/styles.uss?fileID=7433441132597879392&amp;guid=ca7a0c867793b12469d64e21b6c3abe7&amp;type=3#styles" />
     <engine:ScrollView name="ScrollView">
-        <engine:Label text="Creator Kit setup window" name="Header" style="-unity-text-align: upper-center; -unity-font-style: bold; font-size: 24px;" />
+        <engine:Label text="Virtuademy Environments setup" name="Header" style="-unity-text-align: upper-center; -unity-font-style: bold; font-size: 24px;" />
         <engine:VisualElement name="separator" class="separator" style="flex-grow: 1;" />
         <engine:GroupBox name="project-settings">
             <engine:Label text="Project settings" name="Header" class="h1" style="-unity-font-style: bold;" />
@@ -90,14 +90,14 @@
             </engine:GroupBox>
             <engine:GroupBox name="Body" style="background-color: rgba(0, 0, 0, 0.1); border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; justify-content: flex-start; margin-bottom: 6px;">
                 <engine:GroupBox name="FirstLine" style="flex-direction: row; justify-content: space-between; align-items: stretch; align-self: stretch;">
-                    <engine:GroupBox name="current-reflectis-version" tooltip="The Creator Kit packages currently installed are compatible with the version shown here." style="flex-direction: row; margin-top: 2px;">
-                        <engine:Label text="Current Reflectis version:" name="current-reflectis-version-text" />
+                    <engine:GroupBox name="current-reflectis-version" tooltip="The Virtuademy packages currently installed are compatible with the version shown here." style="flex-direction: row; margin-top: 2px;">
+                        <engine:Label text="Current Virtuademy version:" name="current-reflectis-version-text" />
                         <engine:Label text="&lt;version&gt;" name="current-reflectis-version-value" style="-unity-font-style: bold;" />
                     </engine:GroupBox>
-                    <engine:DropdownField label="Select another version" name="reflectis-version-dropdown" choices="Item 1,Item 2" index="0" tooltip="View available packages for another version of Reflectis Worlds. To update all packages currently in the project, click the button below." style="justify-content: space-between; -unity-text-align: middle-left;" />
+                    <engine:DropdownField label="Select another version" name="reflectis-version-dropdown" choices="Item 1,Item 2" index="0" tooltip="View available packages for another version of Virtuademy. To update all packages currently in the project, click the button below." style="justify-content: space-between; -unity-text-align: middle-left;" />
                 </engine:GroupBox>
                 <engine:ListView name="packages-list-view" data-source-path="SelectedVersionVisiblePackages" />
-                <engine:Button text="Update packages to selected version" name="update-packages-button" tooltip="Updates the version of all packages currently installed in the project. WARNING: Updating packages to an older version of Reflectis Worlds may have undesirable effects, especially if breaking changes are involved." style="align-self: flex-end; margin-right: 8px; margin-top: 8px; margin-bottom: 8px;" />
+                <engine:Button text="Update packages to selected version" name="update-packages-button" tooltip="Updates the version of all packages currently installed in the project. WARNING: Updating packages to an older version of Virtuademy may have undesirable effects, especially if breaking changes are involved." style="align-self: flex-end; margin-right: 8px; margin-top: 8px; margin-bottom: 8px;" />
             </engine:GroupBox>
             <engine:Foldout text="Advanced settings" name="advanced-settings-foldout" value="false" style="align-items: flex-start; justify-content: flex-start;">
                 <engine:Toggle label="Show pre-releases" name="show-prereleases-toggle" class="advanced-settings-item" style="flex-direction: row-reverse; align-items: stretch;" />

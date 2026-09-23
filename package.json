@@ -1,9 +1,9 @@
 {
-  "name": "com.anotherealitysrl.reflectis-creatorkit-worlds-setup",
-  "displayName": "Reflectis-CreatorKit-Worlds-Setup",
+  "name": "com.anotherealitysrl.virtuademy-sdk-environments-setup",
+  "displayName": "Virtuademy-SDK-Environments-Setup",
   "version": "1.0.0",
   "unity": "6000.3",
-  "description": "Reflectis-Setup",
+  "description": "The Virtuademy SDK Environments installer: reads PackageRegistry.json and installs the package set for the selected platform version.",
   "dependencies": {
     "com.unity.render-pipelines.universal": "17.3.0",
     "com.unity.nuget.newtonsoft-json": "3.2.1"
@@ -14,6 +14,6 @@
   "category": "Unity",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AnotheRealitySrl/Reflectis-CreatorKit-Worlds-Setup"
+    "url": "https://github.com/AnotheRealitySrl/Virtuademy-SDK-Environments-Setup"
   }
 }
