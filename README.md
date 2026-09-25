@@ -88,5 +88,6 @@ that case is handled and no longer needs an empty array to avoid an exception.
   A project that re-resolves this package under the old manifest key is expected to stop resolving,
   because the key no longer matches the name in `package.json` (not yet observed on a real project). Such a project must run
   `Virtuademy ▸ Update routines ▸ v2026.5 -> v2026.6` (shipped in `Virtuademy-SDK-Environments`)
-  first: it rewrites the key and the URL and deletes `packages-lock.json`. The old id stays in the
+  first: it rewrites the key and the URL and unpins this project's own git packages in
+  `packages-lock.json`, so UPM resolves them again. The old id stays in the
   self-exclusion list of `CreatorKitSetupWindow` for projects that have not migrated yet.
