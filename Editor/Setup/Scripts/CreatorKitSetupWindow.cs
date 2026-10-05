@@ -37,6 +37,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             [CreateProperty] public bool HybridCLRAssemblyReady { get; set; }
             [CreateProperty] public bool InterpreterReady => IsHybridCLRInstalled && HybridCLRAssemblyReady;
 
+            /// <summary>The interpreter is optional, so not having it is not a warning. Having it
+            /// installed but not ready to build is: that is a setup the creator started and that
+            /// would fail their next publish.</summary>
+            [CreateProperty] public bool InterpreterNeedsFix => IsHybridCLRInstalled && !HybridCLRAssemblyReady;
+
             /// <summary>Why the interpreter is not ready, verbatim from HotUpdateSetupper, or
             /// empty when it is. A red icon alone does not tell the author what to fix.</summary>
             [CreateProperty] public string InterpreterIssue { get; set; } = string.Empty;
@@ -472,8 +477,8 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 { ("git-installation-warning", nameof(projectConfig.IsGitInstalled), projectSettingsSection.Q<Foldout>("git-installation-foldout")) },
                 { ("editor-configuration-warning", nameof(projectConfig.EditorConfigurationOk), projectSettingsSection.Q<Foldout>("editor-configuration-foldout")) },
                 { ("project-settings-warning", nameof(projectConfig.ProjectSettingsOk), projectSettingsSection.Q<Foldout>("project-settings-foldout")) },
-                // No entry for the interpreter: it is optional, so a project without it is not
-                // flagged. Its two rows still say whether it is installed and ready.
+                // The interpreter is not in this list: it is optional, so a project without it is
+                // not flagged. Its warning is bound below, to "installed but not ready".
             };
             foreach (var entry in warningIcons)
             {
@@ -528,6 +533,37 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             DataBinding interpreterDownloadBinding = new() { dataSourcePath = PropertyPath.FromName(nameof(projectConfig.InterpreterReady)) };
             interpreterDownloadBinding.sourceToUiConverters.AddConverter((ref bool value) => !value);
             hybridCLRDownloadButton.SetBinding(nameof(hybridCLRDownloadButton.enabledSelf), interpreterDownloadBinding);
+
+            // Same button, two jobs: install the interpreter, or — once it is installed — repair a
+            // setup that is not ready to build (both run the same configuration).
+            DataBinding interpreterButtonTextBinding = new()
+            {
+                dataSourcePath = PropertyPath.FromName(nameof(projectConfig.IsHybridCLRInstalled)),
+                bindingMode = BindingMode.ToTarget
+            };
+            interpreterButtonTextBinding.sourceToUiConverters.AddConverter((ref bool installed) => installed ? "Fix" : "Install interpreter");
+            hybridCLRDownloadButton.SetBinding(nameof(hybridCLRDownloadButton.text), interpreterButtonTextBinding);
+
+            DataBinding interpreterButtonTooltipBinding = new()
+            {
+                dataSourcePath = PropertyPath.FromName(nameof(projectConfig.IsHybridCLRInstalled)),
+                bindingMode = BindingMode.ToTarget
+            };
+            interpreterButtonTooltipBinding.sourceToUiConverters.AddConverter((ref bool installed) => installed
+                ? "Runs the interpreter configuration again: aligns and registers this project's hot-update assembly. The reason it is needed is shown above."
+                : "Installs the interpreter that runs the C# you write in Assets/HotUpdate, and configures this project's hot-update assembly. Clones two repositories and patches a project-local copy of il2cpp, so it takes a while and needs git on PATH.");
+            hybridCLRDownloadButton.SetBinding(nameof(hybridCLRDownloadButton.tooltip), interpreterButtonTooltipBinding);
+
+            // Optional, so absent is fine; installed but not ready is a warning.
+            Foldout interpreterFoldout = projectSettingsSection.Q<Foldout>("Interpreter-settings-foldout");
+            VisualElement interpreterWarning = projectSettingsSection.Q<VisualElement>("Interpreter-settings-warning");
+            DataBinding interpreterWarningBinding = new()
+            {
+                dataSourcePath = PropertyPath.FromName(nameof(projectConfig.InterpreterNeedsFix)),
+                bindingMode = BindingMode.ToTarget
+            };
+            interpreterWarningBinding.sourceToUiConverters.AddConverter((ref bool needsFix) => needsFix && !interpreterFoldout.value);
+            interpreterWarning.SetBinding(nameof(interpreterWarning.visible), interpreterWarningBinding);
 
             // Spell out what is missing. The row icons say "not ready", which is not actionable
             // on its own — the setupper already computes the reason and how to fix it.
