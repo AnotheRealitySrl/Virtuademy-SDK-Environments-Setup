@@ -54,9 +54,11 @@ key is duplicated on purpose (`HotUpdateSetupper.PENDING_SETUP_KEY`) — keep th
 
 ## What it reads
 
-Both files sit in the public blob container `reflectis2023-public`, folder `PackageManager`
-(`https://spacsglobal.dfs.core.windows.net/reflectis2023-public/PackageManager/`). The URLs are
-hardcoded in `CreatorKitSetupWindow`.
+Both files sit in the public blob container `virtuademy-public`, folder `PackageManager`
+(`https://spacsglobal.dfs.core.windows.net/virtuademy-public/PackageManager/`). The URLs are
+hardcoded in `CreatorKitSetupWindow`. Installers up to 1.x read the same two files from
+`reflectis2023-public/PackageManager/`, so both folders are published while 1.x installers are in
+use, and every registry change goes to both.
 
 **The filenames are load-bearing**: the installer asks for exactly those names, so
 `PackageRegistry (1).json` is the same as not publishing.
@@ -173,7 +175,7 @@ Maps a pair of **minor** versions (patch stripped) to the URL of a C# script:
 
 ```json
 {
-  "(\"2025.3\", \"2025.4\")": "https://spacsglobal.dfs.core.windows.net/reflectis2023-public/PackageManager/BreakingChangesSolver2025_4.cs"
+  "(\"2025.3\", \"2025.4\")": "https://spacsglobal.dfs.core.windows.net/virtuademy-public/PackageManager/BreakingChangesSolver2025_4.cs"
 }
 ```
 
@@ -216,8 +218,15 @@ To test a registry change without touching the blob, point an entry at a branch 
   `Virtuademy-SDK-Environments`) first: it rewrites the key and the URL and unpins this project's
   own git packages in `packages-lock.json`, so UPM resolves them again. The old id stays in the
   self-exclusion list of `CreatorKitSetupWindow` for projects that have not migrated yet.
-- **`package.json` still says `1.0.0`.** The rename above is a breaking change and several fixes
-  have landed since the `v1.0.0` tag, but no new version has been cut. See [CHANGELOG.md](CHANGELOG.md).
-- **The blob container still carries the legacy name** (`reflectis2023-public`). Renaming it means
-  shipping an installer release with the new URLs first, and keeping the old files in place for the
-  installers already out there.
+- **2.0.0 is prepared, not released.** It lives on `release/2.0.0`; `main` — the branch a creator
+  gets from the bare git URL — is still the 1.x installer under the old id, and the latest tag is
+  `v1.0.1`. Two gates, both from the meta-repo's `docs/brand-rename-cutover.md` (§6.2 item 9, §6.3):
+  1. **The prod `virtuademy-public` container exists** and serves `PackageManager/PackageRegistry.json`
+     and `BreakingChangesSolverIndex.json` (404 on 2026-10-05: the name is still held by the pilot's
+     container). Copy both from `reflectis2023-public/PackageManager/`, rewriting the solver URL
+     inside the index to the new container, and keep the old folder in place.
+  2. **The 2026.6 platform version is in the registry.** Releasing moves `main` to the new id, so a
+     1.x project that re-resolves the installer stops resolving until it runs
+     `Virtuademy ▸ Update routines ▸ v2026.5 -> v2026.6`, which arrives with the 2026.6 package set.
+  Then: merge `release/2.0.0` into `main`, tag `v2.0.0` on `main`, merge back into `develop`, delete
+  the branch.

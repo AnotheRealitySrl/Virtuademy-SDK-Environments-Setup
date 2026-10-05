@@ -2,11 +2,18 @@
 
 All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
 
-## Unreleased
+## v2.0.0 — prepared on `release/2.0.0`, not released yet
 
-Changes on `develop` since the `v1.0.0` tag. `package.json` still reports `1.0.0`.
+Everything since `v1.0.1`. Ships when the prod `virtuademy-public` container exists and the 2026.6
+platform version is published (see the README's Known issues). Until then `main` and the latest tag
+stay on the 1.x installer.
 
 ### Breaking
+
+- **The registry is read from `virtuademy-public/PackageManager/`** (was
+  `reflectis2023-public/PackageManager/`): `PackageRegistry.json` and
+  `BreakingChangesSolverIndex.json`, same filenames. The old folder must stay published for the
+  1.x installers already in creators' projects.
 
 - **Renamed** (2026-09-23) from `com.anotherealitysrl.reflectis-creatorkit-worlds-setup` /
   `Reflectis.CreatorKit.Worlds.Setup.Editor` to

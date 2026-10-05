@@ -136,8 +136,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         #region Package manager
 
-        private const string package_registry_path = "https://spacsglobal.dfs.core.windows.net/reflectis2023-public/PackageManager/PackageRegistry.json";
-        private const string breaking_changes_solver_path = "https://spacsglobal.dfs.core.windows.net/reflectis2023-public/PackageManager/BreakingChangesSolverIndex.json";
+        // virtuademy-public since 2.0.0 (brand-rename cutover, ADR 0030). Installers up to 1.x read
+        // reflectis2023-public/PackageManager/, which therefore stays published until creators have
+        // moved to this one.
+        private const string package_registry_path = "https://spacsglobal.dfs.core.windows.net/virtuademy-public/PackageManager/PackageRegistry.json";
+        private const string breaking_changes_solver_path = "https://spacsglobal.dfs.core.windows.net/virtuademy-public/PackageManager/BreakingChangesSolverIndex.json";
 
         private static Dictionary<(string, string), string> breakingChangesSolverDictionary;
 
