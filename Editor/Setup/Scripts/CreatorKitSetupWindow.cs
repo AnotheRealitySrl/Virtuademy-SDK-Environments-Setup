@@ -328,19 +328,36 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
                 UpdateAvailableVersions();
 
-                //Get reflectis version and update list of packages
-                if (string.IsNullOrEmpty(packageManagerConfig.CurrentInstallationVersion) || !packageManagerConfig.AvailableVersions.Contains(packageManagerConfig.CurrentInstallationVersion))
+                // A project with no recorded version is new: it starts on the default entry.
+                //
+                // A recorded version is NOT replaced when the list does not show it. It used to be
+                // overwritten with the last visible entry whenever that happened — a prerelease
+                // hidden by the toggle, or an entry since removed from the registry — so the
+                // window claimed a version the project did not have, the installed and displayed
+                // versions matched, and the update button that would have fixed it stayed off.
+                if (string.IsNullOrEmpty(packageManagerConfig.CurrentInstallationVersion))
                 {
                     packageManagerConfig.CurrentInstallationVersion = packageManagerConfig.AvailableVersions[^1];
                 }
+                else if (packageManagerConfig.CurrentVersion == null)
+                {
+                    UnityEngine.Debug.LogWarning($"[Setup] This project records version '{packageManagerConfig.CurrentInstallationVersion}', " +
+                                                 "which the registry no longer lists. Select a version and press " +
+                                                 "\"Update packages to selected version\" to move to it.");
+                }
+
                 if (string.IsNullOrEmpty(packageManagerConfig.DisplayedReflectisVersion) || !packageManagerConfig.AvailableVersions.Contains(packageManagerConfig.DisplayedReflectisVersion))
                 {
-                    packageManagerConfig.DisplayedReflectisVersion = !string.IsNullOrEmpty(packageManagerConfig.CurrentInstallationVersion) ? packageManagerConfig.CurrentInstallationVersion : packageManagerConfig.AvailableVersions[^1];
+                    packageManagerConfig.DisplayedReflectisVersion = packageManagerConfig.AvailableVersions.Contains(packageManagerConfig.CurrentInstallationVersion)
+                        ? packageManagerConfig.CurrentInstallationVersion
+                        : packageManagerConfig.AvailableVersions[^1];
                 }
                 previousInstallationVersion = packageManagerConfig.CurrentInstallationVersion;
 
-
-                projectConfig.UnityVersionIsMatching = UnityVersion == packageManagerConfig.AllVersionsPackageRegistry.FirstOrDefault(x => x.ReflectisVersion == packageManagerConfig.CurrentInstallationVersion).RequiredUnityVersion;
+                // Against the installed entry, or the selected one when the installed version is
+                // no longer listed: that is the engine the update will need.
+                PackageRegistry versionForEngineCheck = packageManagerConfig.CurrentVersion ?? packageManagerConfig.SelectedVersion;
+                projectConfig.UnityVersionIsMatching = UnityVersion == versionForEngineCheck?.RequiredUnityVersion;
                 packageManagerConfig.LastRefreshTime = DateTime.Now;
 
                 CheckGitInstallation();
@@ -534,7 +551,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             Label currentReflectisVersionValue = packageManagerSection.Q<Label>("current-reflectis-version-value");
             currentReflectisVersionValue.SetBinding(nameof(currentReflectisVersionValue.text), new DataBinding()
             {
-                dataSourcePath = PropertyPath.FromName(nameof(packageManagerConfig.CurrentInstallationVersion)),
+                dataSourcePath = PropertyPath.FromName(nameof(packageManagerConfig.CurrentInstallationVersionLabel)),
                 bindingMode = BindingMode.ToTarget
             });
 
@@ -1165,7 +1182,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         {
             bool isDependency = false;
 
-            if (packageManagerConfig.CurrentVersion.ReverseDependencies.TryGetValue(package.Name, out List<string> deps))
+            // The installed version's graph, or the selected one's when the installed version is
+            // no longer listed — this used to dereference a null CurrentVersion in that case.
+            PackageRegistry graph = packageManagerConfig.CurrentVersion ?? packageManagerConfig.SelectedVersion;
+
+            if (graph != null && graph.ReverseDependencies.TryGetValue(package.Name, out List<string> deps))
             {
                 foreach (string dep in deps)
                 {
@@ -1190,9 +1211,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             {
                 previousInstallationVersion = packageManagerConfig.CurrentInstallationVersion;
 
-                Dictionary<string, PackageDefinition> packages = packageManagerConfig.AllVersionsPackageRegistry
-                    .FirstOrDefault(x => x.ReflectisVersion == packageManagerConfig.CurrentInstallationVersion).Packages
-                    .ToDictionary(x => x.Name, y => y);
+                // Nothing below reads the installed version's registry entry: the update works
+                // from what is installed and what the target lists, so it also moves a project
+                // off a version the registry no longer has. (An unused lookup of that entry used
+                // to sit here and threw NullReferenceException in exactly that case.)
+                List<string> removedPackages = new();
 
                 List<PackageDefinition> installedPackagesCopy = new(packageManagerConfig.InstalledPackages);
 
@@ -1217,9 +1240,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                     //    continue;
                     //}
                     //overlapping packages
-                    if (packageManagerConfig.SelectedVersionPackageDictionary.ContainsKey(package.Name))
+                    if (packageManagerConfig.SelectedVersionPackageDictionary.TryGetValue(package.Name, out PackageDefinition target))
                     {
-                        if (package.Version != packageManagerConfig.SelectedVersionPackageDictionary[package.Name].Version)
+                        // The URL counts too: the same id can move repository across versions
+                        // (the 2026-09 renames did), and the manifest must follow it.
+                        if (package.Version != target.Version || package.Url != target.Url)
                         {
                             packageManagerConfig.InstalledPackages.Remove(package);
                             UninstallPackages(new() { package.Name });
@@ -1232,15 +1257,20 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                     else
                     {
                         //old packages
-                        if (!IsPackageInstalledAsDependency(package))
-                        {
-                            ShowAlertDialog("Warning", $"The package \n{package.Name}\n is not available in the selected Virtuademy version\n and has been uninstalled.", null);
-                        }
+                        removedPackages.Add(package.Name);
 
                         packageManagerConfig.InstalledPackages.Remove(package);
                         UninstallPackages(new() { package.Name });
-                        //If the package is not available in the selected version and is not a dependency, show a warning
                     }
+                }
+
+                // One dialog for all of them. It used to be one per package, each overwriting the
+                // last in the same popup and adding its own handler to the same button.
+                if (removedPackages.Count > 0)
+                {
+                    UnityEngine.Debug.Log("[Setup] Removed, not part of the selected version:\n  " + string.Join("\n  ", removedPackages));
+                    ShowAlertDialog("Warning", $"{removedPackages.Count} package(s) are not part of the selected Virtuademy version " +
+                                               "and have been uninstalled. The Console lists them.", null);
                 }
 
 

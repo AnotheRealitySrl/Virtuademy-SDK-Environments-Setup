@@ -109,10 +109,20 @@ procedure in the meta-repo's `docs/deploy.md`.
 
 #### Entry order is load-bearing
 
-When the project has no installed version yet — or the one it has is no longer listed — the window
-selects the **last** entry of the visible list (`AvailableVersions[^1]`), not the highest version
-number. Append new releases at the end, and keep prerelease entries anywhere: they are filtered out
-before the pick unless the toggle is on.
+When the project has no installed version yet, the window records the **last** entry of the visible
+list (`AvailableVersions[^1]`), not the highest version number, and selects the same entry for
+display when the installed one is not visible. Append new releases at the end, and keep prerelease
+entries anywhere: they are filtered out before the pick unless the toggle is on.
+
+#### Removing an entry strands no project
+
+A project keeps the version it recorded even when the registry stops listing it (a test entry
+deleted after its branch merged, typically). The window shows it as *no longer available*, logs a
+warning, and enables **Update packages to selected version**, which works from what is installed and
+what the target lists — it does not need the old entry. Until 2026-10 the window instead overwrote
+the recorded version with the newest entry: it then claimed a version the project did not have and
+kept the update button disabled, which is how `Virtuademy-Env-Test` got stuck on the removed
+`spacs-utility-split` set.
 
 #### `version` is a git ref, not only a tag
 

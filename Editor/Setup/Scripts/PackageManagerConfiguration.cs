@@ -43,7 +43,20 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             }
         }
 
+        /// <summary>The registry entry of the installed version, or null when the project records
+        /// a version the registry no longer lists — a removed test entry, typically.</summary>
         public PackageRegistry CurrentVersion => AllVersionsPackageRegistry.FirstOrDefault(x => x.ReflectisVersion == CurrentInstallationVersion);
+
+        /// <summary>
+        /// The installed version as the window shows it. A version the registry no longer lists
+        /// is shown, and flagged, rather than replaced: replacing it with the newest entry is what
+        /// used to make the window claim a version the project did not have, and disable the
+        /// update that would have fixed it.
+        /// </summary>
+        [CreateProperty]
+        public string CurrentInstallationVersionLabel => CurrentVersion != null || string.IsNullOrEmpty(CurrentInstallationVersion)
+            ? CurrentInstallationVersion
+            : $"{CurrentInstallationVersion} (no longer available — update to a listed version)";
 
         public UnityEvent OnDisplayedVersionChanged { get; } = new();
 

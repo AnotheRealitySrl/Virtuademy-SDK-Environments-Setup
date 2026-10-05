@@ -73,7 +73,8 @@ compile, fix the compilation errors shown in the Console and press it again.
 
 ### Package manager
 
-- **Current Virtuademy version** — the platform version the installed packages belong to.
+- **Current Virtuademy version** — the platform version the installed packages belong to. If it
+  says *no longer available*, that version was withdrawn: select a listed one and update.
 - **Select another version** — shows the packages of another platform version. The list under it
   shows the packages you can install for the version selected; expand one to see its description,
   repository and dependencies.

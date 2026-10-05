@@ -49,6 +49,10 @@ Changes on `develop` since the `v1.0.0` tag. `package.json` still reports `1.0.0
 - Turning off *Show pre-releases* moves the selection off any prerelease entry, not only `develop`.
 - Updating with automatic breaking-change resolution on no longer throws when no script is published
   for the version step.
+- A project whose recorded version is no longer in the registry keeps it (shown as *no longer
+  available*) instead of being silently relabelled with the newest entry, so the update to a listed
+  version is enabled and no longer throws. The update also follows a package whose repository URL
+  changed, and lists removed packages in one dialog instead of one per package.
 
 ## v1.0.0
 
