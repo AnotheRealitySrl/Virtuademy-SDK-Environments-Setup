@@ -8,7 +8,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
     /// Opens the setup window when the project is opened, but only when the project needs it:
     /// Virtuademy-SDK-Environments is not installed, or one of the window's local checks fails
     /// (see <see cref="CreatorKitSetupWindow.FindStartupIssue"/>). A configured project opens
-    /// without it.
+    /// without it, and the toggle at the foot of the window turns the check off altogether.
     ///
     /// [InitializeOnLoad] runs on every domain reload — each script change, each package
     /// resolve — so a session flag limits it to the first one: the project opening, or this
@@ -38,6 +38,12 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private static void OpenIfNeeded()
         {
+            // The footer toggle of the window turns the whole startup check off.
+            if (!CreatorKitSetupWindow.ShowOnStartup)
+            {
+                return;
+            }
+
             string issue = CreatorKitSetupWindow.FindStartupIssue();
             if (issue == null)
             {

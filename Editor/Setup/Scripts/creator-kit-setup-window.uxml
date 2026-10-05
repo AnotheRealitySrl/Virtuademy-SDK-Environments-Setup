@@ -119,6 +119,9 @@
         </engine:GroupBox>
         <engine:VisualElement name="separator" class="separator" style="flex-grow: 1; height: 1px; border-left-color: rgba(0, 0, 0, 0); border-right-color: rgba(0, 0, 0, 0); border-top-color: rgba(0, 0, 0, 0); border-bottom-color: rgba(0, 0, 0, 0); background-color: rgb(0, 0, 0);" />
     </engine:ScrollView>
+    <engine:VisualElement name="window-footer" class="window-footer">
+        <engine:Toggle label="Open this window when the project opens and needs setup" name="show-on-startup-toggle" class="footer-startup-toggle" tooltip="When on, the window opens by itself once per editor session if Virtuademy-SDK-Environments is missing or a project check fails. Saved for this project on this machine." />
+    </engine:VisualElement>
     <engine:VisualElement name="popup-dialog-container" style="width: 300px; height: 120px; background-color: rgba(154, 154, 154, 0.84); border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; position: absolute; top: 50%; left: 50%; right: 50%; bottom: 50%; display: none;">
         <engine:Label name="dialog-title" text="Title" class="dialog-title" style="-unity-text-align: upper-center; font-size: 20px; -unity-font-style: bold;" />
         <engine:Label name="dialog-message" text="Message" class="dialog-message" style="-unity-text-align: upper-center; padding-top: 8px; padding-bottom: 8px;" />

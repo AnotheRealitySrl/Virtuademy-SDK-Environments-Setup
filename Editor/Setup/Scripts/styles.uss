@@ -25,6 +25,29 @@
     -unity-text-align: upper-center;
 }
 
+/* Pinned under the scroll view: the template container and the ScrollView grow, the footer
+   keeps its own height. */
+#ScrollView {
+    flex-grow: 1;
+}
+
+.window-footer {
+    flex-shrink: 0;
+    flex-direction: row;
+    justify-content: flex-start;
+    padding-top: 4px;
+    padding-right: 6px;
+    padding-bottom: 4px;
+    padding-left: 6px;
+    border-top-width: 1px;
+    border-top-color: rgba(0, 0, 0, 0.5);
+}
+
+.footer-startup-toggle {
+    flex-direction: row-reverse;
+    margin-left: 0;
+}
+
 .separator {
     background-color: rgb(0, 0, 0);
     height: 1px;

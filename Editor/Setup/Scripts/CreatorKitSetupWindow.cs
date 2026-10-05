@@ -150,6 +150,18 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         // static check has no instance to read from.
         private const string render_pipeline_asset_guid = "a5c68f2b48f576544bba74d7a79c8d3c";
 
+        // Per project (productGUID) and per machine: whether the window may open with the project
+        // is a personal preference, not something to commit for the whole team.
+        private static string ShowOnStartupPrefKey => "Virtuademy.SDK.Environments.Setup.ShowOnStartup." + PlayerSettings.productGUID;
+
+        /// <summary>Whether the startup check may open the window. It still opens only when
+        /// <see cref="FindStartupIssue"/> finds something.</summary>
+        internal static bool ShowOnStartup
+        {
+            get => EditorPrefs.GetBool(ShowOnStartupPrefKey, true);
+            set => EditorPrefs.SetBool(ShowOnStartupPrefKey, value);
+        }
+
         private bool dataBindingsAdded;
 
         /// <summary>
@@ -192,9 +204,15 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             // Instantiate UXML
             VisualElement labelFromUXML = m_VisualTreeAsset.Instantiate();
+            // Fills the window, so the footer sits at the bottom rather than under the content.
+            labelFromUXML.style.flexGrow = 1;
             root.Add(labelFromUXML);
 
             SetupHeader();
+
+            Toggle showOnStartupToggle = root.Q<Toggle>("show-on-startup-toggle");
+            showOnStartupToggle.SetValueWithoutNotify(ShowOnStartup);
+            showOnStartupToggle.RegisterValueChangedCallback(evt => ShowOnStartup = evt.newValue);
             root.Q<Button>("load-error-retry-button").clicked += InitializeWindow;
 
             InitializeWindow();

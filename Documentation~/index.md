@@ -44,6 +44,9 @@ or the project settings below are not configured. The Console says which. A proj
 opens without it, and if you close it, it stays closed until the editor is restarted. You can
 always open it from **Virtuademy ▸ Setup ▸ Setup project**.
 
+To stop it opening by itself, clear **Open this window when the project opens and needs setup** at
+the foot of the window. The choice is saved for this project on this machine.
+
 The startup check does not cover the Unity version or the interpreter: open the window to see
 those.
 

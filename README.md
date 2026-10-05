@@ -29,7 +29,9 @@ a `SessionState` flag, skipped in batch mode) — **only if the project needs it
 registered, git cannot be run, an editor module is missing, or the URP / API compatibility / max
 texture size settings are off. It reuses the window's own checks. Deliberately left out: the Unity
 version (it needs the registry, hence the network) and the interpreter (HybridCLR). The reason is
-logged when the window opens. The header logo is `Icons/virtuademy-logo-{light,dark}.png`, picked by
+logged when the window opens. The toggle at the foot of the window turns the startup check off; the
+choice is an `EditorPrefs` key per `PlayerSettings.productGUID` (default on), so it is per project
+and per machine and nothing is committed. The header logo is `Icons/virtuademy-logo-{light,dark}.png`, picked by
 `EditorGUIUtility.isProSkin`, rasterized from the Landing's `themes/virtuademy/full-*.svg`; the
 `.meta` files are committed because a git package is immutable and Unity cannot generate them.
 
