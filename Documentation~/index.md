@@ -38,9 +38,14 @@ Unity picks up the folder as an embedded package on the next refresh.
 
 ## How to use
 
-The window opens by itself when you open the project (once per editor session). To stop that,
-clear **Show this window when the project opens** under the logo — the choice is saved for this
-project on this machine. You can always open it from **Virtuademy ▸ Setup ▸ Setup project**.
+When you open the project, the window opens by itself **only if something needs doing**:
+Virtuademy-SDK-Environments is not installed yet, git cannot be run, an editor module is missing,
+or the project settings below are not configured. The Console says which. A project that is set up
+opens without it, and if you close it, it stays closed until the editor is restarted. You can
+always open it from **Virtuademy ▸ Setup ▸ Setup project**.
+
+The startup check does not cover the Unity version or the interpreter: open the window to see
+those.
 
 The window has two sections, **Project settings** and
 **Package manager**. Work through them top to bottom: the package installs need git, and the

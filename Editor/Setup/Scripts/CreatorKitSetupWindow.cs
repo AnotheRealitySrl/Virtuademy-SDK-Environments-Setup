@@ -143,17 +143,40 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         // Resolves by package name whether the package is a git dependency or an embedded folder.
         private const string package_root = "Packages/com.anotherealitysrl.virtuademy-sdk-environments-setup";
 
-        // Per project (productGUID) and per machine: whether the window opens with the project is
-        // a personal preference, not something to commit for the whole team.
-        private static string ShowOnStartupPrefKey => "Virtuademy.SDK.Environments.Setup.ShowOnStartup." + PlayerSettings.productGUID;
+        private const string sdk_environments_package_name = "com.anotherealitysrl.virtuademy-sdk-environments";
 
-        internal static bool ShowOnStartup
-        {
-            get => EditorPrefs.GetBool(ShowOnStartupPrefKey, true);
-            set => EditorPrefs.SetBool(ShowOnStartupPrefKey, value);
-        }
+        // Editor/Setup/ProjectSettings/DefaultRendererPipelineAsset.asset — the same asset the
+        // window receives as renderPipelineAsset through its script's default references, which a
+        // static check has no instance to read from.
+        private const string render_pipeline_asset_guid = "a5c68f2b48f576544bba74d7a79c8d3c";
 
         private bool dataBindingsAdded;
+
+        /// <summary>
+        /// Why the project needs this window, or null when it does not: SDK-Environments missing,
+        /// or one of the window's local checks failing. Left to the window: the Unity version,
+        /// which is compared against the registry and so needs the network, and the interpreter,
+        /// which a project may legitimately not have set up yet.
+        /// </summary>
+        internal static string FindStartupIssue()
+        {
+            UnityEditor.PackageManager.PackageInfo[] registered = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages();
+
+            if (!registered.Any(p => p.name == sdk_environments_package_name))
+                return "Virtuademy-SDK-Environments is not installed.";
+
+            if (!TryGetGitVersion(out _))
+                return "git could not be run from the editor.";
+
+            if (GetInstalledModules().ContainsValue(false))
+                return "some editor modules (Android, WebGL, Windows) are missing.";
+
+            RenderPipelineAsset renderPipeline = AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(AssetDatabase.GUIDToAssetPath(render_pipeline_asset_guid));
+            if (!IsRenderPipelineConfigured(renderPipeline) || !GetProjectSettingsStatus() || !GetMaxTextureSizeOverride())
+                return "the project settings are not configured.";
+
+            return null;
+        }
 
         [MenuItem("Virtuademy/Setup/Setup project")]
         public static void ShowWindow()
@@ -193,10 +216,6 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             {
                 headerLogo.style.display = DisplayStyle.None;
             }
-
-            Toggle showOnStartupToggle = root.Q<Toggle>("show-on-startup-toggle");
-            showOnStartupToggle.SetValueWithoutNotify(ShowOnStartup);
-            showOnStartupToggle.RegisterValueChangedCallback(evt => ShowOnStartup = evt.newValue);
         }
 
         private void OnApplicationQuit()
@@ -664,6 +683,16 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private void CheckGitInstallation()
         {
+            projectConfig.IsGitInstalled = TryGetGitVersion(out string gitVersion);
+            if (projectConfig.IsGitInstalled)
+            {
+                projectConfig.GitVersion = gitVersion;
+            }
+        }
+
+        private static bool TryGetGitVersion(out string version)
+        {
+            version = null;
             try
             {
                 ProcessStartInfo startInfo = new()
@@ -681,18 +710,16 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 string output = process.StandardOutput.ReadToEnd();
                 process.WaitForExit();
 
-                if (process.ExitCode == 0)
+                if (process.ExitCode != 0)
                 {
-                    // Trimmed: `git --version` ends with a newline, and a Label holding one is two
-                    // lines tall. With align-items: center on the row, the visible line then sits
-                    // above the centre and the value reads as misaligned against its own caption.
-                    projectConfig.GitVersion = output.Trim();
-                    projectConfig.IsGitInstalled = true;
+                    return false;
                 }
-                else
-                {
-                    projectConfig.IsGitInstalled = false;
-                }
+
+                // Trimmed: `git --version` ends with a newline, and a Label holding one is two
+                // lines tall. With align-items: center on the row, the visible line then sits
+                // above the centre and the value reads as misaligned against its own caption.
+                version = output.Trim();
+                return true;
             }
             catch (Exception ex)
             {
@@ -705,24 +732,32 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 // not on THIS PROCESS's PATH, which is not the same as git being absent — an editor
                 // launched from Unity Hub inherits an environment that a shell does not. Same red
                 // icon, different fix, so say which one it is.
-                projectConfig.IsGitInstalled = false;
                 UnityEngine.Debug.LogWarning($"[Setup] Could not run `git --version`: {ex.GetType().Name} - {ex.Message}. " +
                                              "If git works in a terminal, it is missing from the PATH this editor " +
                                              "process inherited — relaunch the editor from a shell where git resolves.");
+                return false;
             }
         }
 
         private void CheckEditorModulesInstallation()
+        {
+            projectConfig.InstalledModules = GetInstalledModules();
+            projectConfig.AllEditorModulesInstalled = !projectConfig.InstalledModules.Values.Contains(false);
+        }
+
+        private static Dictionary<string, bool> GetInstalledModules()
         {
             // Each target is asked about with its OWN group. The previous version looped over every
             // BuildTargetGroup and ASSIGNED inside the loop, so all three entries ended up holding
             // the answer for whichever group Enum.GetValues yielded last — paired with targets that
             // do not belong to it. IsBuildTargetSupported is false for every such pair, so the
             // check reported "editor modules missing" regardless of what was actually installed.
-            projectConfig.InstalledModules["Android"] = BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android, BuildTarget.Android);
-            projectConfig.InstalledModules["Windows"] = BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows);
-            projectConfig.InstalledModules["WebGL"] = BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL);
-            projectConfig.AllEditorModulesInstalled = !projectConfig.InstalledModules.Values.Contains(false);
+            return new()
+            {
+                { "Android", BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android, BuildTarget.Android) },
+                { "WebGL", BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL) },
+                { "Windows", BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows) },
+            };
         }
 
         private void CheckProjectSettings()
@@ -803,17 +838,19 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             projectConfig.InterpreterIssue = issue ?? string.Empty;
         }
 
-        private bool GetURPConfigurationStatus()
+        private bool GetURPConfigurationStatus() => IsRenderPipelineConfigured(renderPipelineAsset);
+
+        private static bool IsRenderPipelineConfigured(RenderPipelineAsset asset)
         {
-            return GraphicsSettings.defaultRenderPipeline == renderPipelineAsset && QualitySettings.renderPipeline == renderPipelineAsset;
+            return asset != null && GraphicsSettings.defaultRenderPipeline == asset && QualitySettings.renderPipeline == asset;
         }
 
-        private bool GetProjectSettingsStatus()
+        private static bool GetProjectSettingsStatus()
         {
             return PlayerSettings.GetApiCompatibilityLevel(NamedBuildTarget.Standalone) == ApiCompatibilityLevel.NET_Unity_4_8;
         }
 
-        private bool GetMaxTextureSizeOverride()
+        private static bool GetMaxTextureSizeOverride()
         {
             return EditorUserBuildSettings.overrideMaxTextureSize == 1024;
         }

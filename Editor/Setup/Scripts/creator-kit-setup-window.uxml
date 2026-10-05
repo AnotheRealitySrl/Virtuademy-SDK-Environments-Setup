@@ -3,9 +3,7 @@
     <engine:ScrollView name="ScrollView">
         <engine:VisualElement name="window-header" class="window-header">
             <engine:VisualElement name="header-logo" class="header-logo" />
-            <engine:Label text="SDK Environments setup" name="header-subtitle" class="header-subtitle" />
-            <engine:Toggle label="Show this window when the project opens" name="show-on-startup-toggle" class="header-startup-toggle" tooltip="Opens this window once per editor session, when the project is opened. Saved for this project on this machine." />
-        </engine:VisualElement>
+            <engine:Label text="SDK Environments setup" name="header-subtitle" class="header-subtitle" />        </engine:VisualElement>
         <engine:VisualElement name="separator" class="separator" style="flex-grow: 1;" />
         <engine:VisualElement name="load-error" class="warning-item" style="display: none;">
             <engine:VisualElement class="warning-item-icon" />

@@ -29,8 +29,9 @@ Changes on `develop` since the `v1.0.0` tag. `package.json` still reports `1.0.0
 - Registry entries can set `"prerelease": true`, and `version` can be any git ref (tag, branch,
   commit).
 - The window ships its own icons, and a Virtuademy logo header (light or dark by editor skin).
-- The window opens when the project is opened, once per editor session; a header toggle turns this
-  off for the project on this machine.
+- The window opens when the project is opened, once per editor session, if
+  Virtuademy-SDK-Environments is not installed or a local check (git, editor modules, project
+  settings) fails.
 
 ### Fixed
 

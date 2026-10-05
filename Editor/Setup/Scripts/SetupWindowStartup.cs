@@ -5,36 +5,47 @@ using UnityEngine;
 namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     /// <summary>
-    /// Opens the setup window when the project is opened, unless the creator turned it off with
-    /// the toggle in the window's header.
+    /// Opens the setup window when the project is opened, but only when the project needs it:
+    /// Virtuademy-SDK-Environments is not installed, or one of the window's local checks fails
+    /// (see <see cref="CreatorKitSetupWindow.FindStartupIssue"/>). A configured project opens
+    /// without it.
     ///
     /// [InitializeOnLoad] runs on every domain reload — each script change, each package
     /// resolve — so a session flag limits it to the first one: the project opening, or this
-    /// package arriving in a project that was already open.
+    /// package arriving in a project that was already open. Closing the window therefore keeps
+    /// it closed until the next editor session, even while something is still missing.
     /// </summary>
     [InitializeOnLoad]
     internal static class SetupWindowStartup
     {
-        private const string opened_this_session_key = "Virtuademy.SDK.Environments.Setup.OpenedThisSession";
+        private const string checked_this_session_key = "Virtuademy.SDK.Environments.Setup.CheckedThisSession";
 
         static SetupWindowStartup()
         {
             // Command-line builds and the Env-Test CLI run in batch mode: there is nobody to show
             // a window to.
-            if (Application.isBatchMode || SessionState.GetBool(opened_this_session_key, false))
+            if (Application.isBatchMode || SessionState.GetBool(checked_this_session_key, false))
             {
                 return;
             }
 
-            SessionState.SetBool(opened_this_session_key, true);
+            SessionState.SetBool(checked_this_session_key, true);
 
-            if (!CreatorKitSetupWindow.ShowOnStartup)
+            // Deferred: on project open this runs before the editor has restored its layout and
+            // before the asset database is fully available to the checks.
+            EditorApplication.delayCall += OpenIfNeeded;
+        }
+
+        private static void OpenIfNeeded()
+        {
+            string issue = CreatorKitSetupWindow.FindStartupIssue();
+            if (issue == null)
             {
                 return;
             }
 
-            // Deferred: on project open this runs before the editor has restored its layout.
-            EditorApplication.delayCall += CreatorKitSetupWindow.ShowWindow;
+            Debug.Log($"[Setup] Opening the setup window: {issue}");
+            CreatorKitSetupWindow.ShowWindow();
         }
     }
 }

@@ -25,12 +25,6 @@
     -unity-text-align: upper-center;
 }
 
-.header-startup-toggle {
-    margin-top: 6px;
-    flex-direction: row-reverse;
-    align-self: center;
-}
-
 .separator {
     background-color: rgb(0, 0, 0);
     height: 1px;
