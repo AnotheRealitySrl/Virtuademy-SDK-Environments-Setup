@@ -136,11 +136,13 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         #region Package manager
 
-        // virtuademy-public since 2.0.0 (brand-rename cutover, ADR 0030). Installers up to 1.x read
-        // reflectis2023-public/PackageManager/, which therefore stays published until creators have
-        // moved to this one.
-        private const string package_registry_path = "https://spacsglobal.dfs.core.windows.net/virtuademy-public/PackageManager/PackageRegistry.json";
-        private const string breaking_changes_solver_path = "https://spacsglobal.dfs.core.windows.net/virtuademy-public/PackageManager/BreakingChangesSolverIndex.json";
+        // spacspublic/sdkpackagesregistry/ since 2.0.0: spacspublic is the public container for
+        // generic tooling, named for neither a brand nor a tenant, so neither a rename nor a tenant
+        // teardown can move the registry again. Installers up
+        // to 1.x read reflectis2023-public/PackageManager/, which receives registry updates up to
+        // and including 2026.6 — the version that brings the migration to this installer.
+        private const string package_registry_path = "https://spacsglobal.dfs.core.windows.net/spacspublic/sdkpackagesregistry/PackageRegistry.json";
+        private const string breaking_changes_solver_path = "https://spacsglobal.dfs.core.windows.net/spacspublic/sdkpackagesregistry/BreakingChangesSolverIndex.json";
 
         private static Dictionary<(string, string), string> breakingChangesSolverDictionary;
 
