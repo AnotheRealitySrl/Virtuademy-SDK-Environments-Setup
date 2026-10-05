@@ -1,8 +1,17 @@
 <engine:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:engine="UnityEngine.UIElements" xmlns:editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
     <Style src="project://database/Packages/com.anotherealitysrl.virtuademy-sdk-environments-setup/Editor/Setup/Scripts/styles.uss?fileID=7433441132597879392&amp;guid=ca7a0c867793b12469d64e21b6c3abe7&amp;type=3#styles" />
     <engine:ScrollView name="ScrollView">
-        <engine:Label text="Virtuademy Environments setup" name="Header" style="-unity-text-align: upper-center; -unity-font-style: bold; font-size: 24px;" />
+        <engine:VisualElement name="window-header" class="window-header">
+            <engine:VisualElement name="header-logo" class="header-logo" />
+            <engine:Label text="SDK Environments setup" name="header-subtitle" class="header-subtitle" />
+            <engine:Toggle label="Show this window when the project opens" name="show-on-startup-toggle" class="header-startup-toggle" tooltip="Opens this window once per editor session, when the project is opened. Saved for this project on this machine." />
+        </engine:VisualElement>
         <engine:VisualElement name="separator" class="separator" style="flex-grow: 1;" />
+        <engine:VisualElement name="load-error" class="warning-item" style="display: none;">
+            <engine:VisualElement class="warning-item-icon" />
+            <engine:Label name="load-error-text" class="warning-item-text" style="flex-shrink: 1; flex-grow: 1;" />
+            <engine:Button text="Retry" name="load-error-retry-button" />
+        </engine:VisualElement>
         <engine:GroupBox name="project-settings">
             <engine:Label text="Project settings" name="Header" class="h1" style="-unity-font-style: bold;" />
             <engine:GroupBox name="git-installation" class="settings-group">

@@ -140,6 +140,21 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         #endregion
 
+        // Resolves by package name whether the package is a git dependency or an embedded folder.
+        private const string package_root = "Packages/com.anotherealitysrl.virtuademy-sdk-environments-setup";
+
+        // Per project (productGUID) and per machine: whether the window opens with the project is
+        // a personal preference, not something to commit for the whole team.
+        private static string ShowOnStartupPrefKey => "Virtuademy.SDK.Environments.Setup.ShowOnStartup." + PlayerSettings.productGUID;
+
+        internal static bool ShowOnStartup
+        {
+            get => EditorPrefs.GetBool(ShowOnStartupPrefKey, true);
+            set => EditorPrefs.SetBool(ShowOnStartupPrefKey, value);
+        }
+
+        private bool dataBindingsAdded;
+
         [MenuItem("Virtuademy/Setup/Setup project")]
         public static void ShowWindow()
         {
@@ -156,7 +171,32 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             VisualElement labelFromUXML = m_VisualTreeAsset.Instantiate();
             root.Add(labelFromUXML);
 
+            SetupHeader();
+            root.Q<Button>("load-error-retry-button").clicked += InitializeWindow;
+
             InitializeWindow();
+        }
+
+        /// <summary>The header needs no data, so it is wired before — and regardless of — the
+        /// registry download.</summary>
+        private void SetupHeader()
+        {
+            // Light lettering on the dark skin, dark lettering on the light one.
+            string logoVariant = EditorGUIUtility.isProSkin ? "light" : "dark";
+            Texture2D logo = AssetDatabase.LoadAssetAtPath<Texture2D>($"{package_root}/Editor/Setup/Icons/virtuademy-logo-{logoVariant}.png");
+            VisualElement headerLogo = root.Q<VisualElement>("header-logo");
+            if (logo != null)
+            {
+                headerLogo.style.backgroundImage = logo;
+            }
+            else
+            {
+                headerLogo.style.display = DisplayStyle.None;
+            }
+
+            Toggle showOnStartupToggle = root.Q<Toggle>("show-on-startup-toggle");
+            showOnStartupToggle.SetValueWithoutNotify(ShowOnStartup);
+            showOnStartupToggle.RegisterValueChangedCallback(evt => ShowOnStartup = evt.newValue);
         }
 
         private void OnApplicationQuit()
@@ -171,79 +211,166 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private async void InitializeWindow()
         {
-            await LoadData();
-            AddDataBindings();
+            if (!await LoadData())
+            {
+                return;
+            }
+
+            // Once per window: the bindings also subscribe click handlers, and a second pass
+            // after a Retry or a Refresh would run every button's action twice.
+            if (!dataBindingsAdded)
+            {
+                AddDataBindings();
+                dataBindingsAdded = true;
+            }
         }
 
-        private async Task LoadData()
+        /// <summary>
+        /// Loads the registry and runs the project checks. Returns false, with the reason shown
+        /// in the window, when the version list cannot be obtained — everything below it is
+        /// computed against that list, so there is nothing meaningful to show without it.
+        /// </summary>
+        private async Task<bool> LoadData()
         {
             isSetupping = true;
-
-            string packageManagerAssetGuid = AssetDatabase.FindAssets("t:" + typeof(PackageManagerConfiguration).Name).ToList().FirstOrDefault();
-            packageManagerConfig = AssetDatabase.LoadAssetAtPath<PackageManagerConfiguration>(AssetDatabase.GUIDToAssetPath(packageManagerAssetGuid));
-
-            if (packageManagerConfig == null)
+            try
             {
-                EnsureFolderExists(settings_folder_path);
+                string packageManagerAssetGuid = AssetDatabase.FindAssets("t:" + typeof(PackageManagerConfiguration).Name).ToList().FirstOrDefault();
+                packageManagerConfig = AssetDatabase.LoadAssetAtPath<PackageManagerConfiguration>(AssetDatabase.GUIDToAssetPath(packageManagerAssetGuid));
 
-                packageManagerConfig = CreateInstance<PackageManagerConfiguration>();
-                string settingsAssetPath = $"{settings_folder_path}/{setup_configuration_path}";
-                AssetDatabase.CreateAsset(packageManagerConfig, settingsAssetPath);
-                AssetDatabase.SaveAssets();
+                if (packageManagerConfig == null)
+                {
+                    EnsureFolderExists(settings_folder_path);
+
+                    packageManagerConfig = CreateInstance<PackageManagerConfiguration>();
+                    string settingsAssetPath = $"{settings_folder_path}/{setup_configuration_path}";
+                    AssetDatabase.CreateAsset(packageManagerConfig, settingsAssetPath);
+                    AssetDatabase.SaveAssets();
+                }
+
+                using HttpClient client = new();
+
+                // The window used to call EnsureSuccessStatusCode here with nothing around it: an
+                // offline editor got an exception inside an async void and a window frozen
+                // half-built, with nothing on screen to say why.
+                PackageRegistry[] registry;
+                try
+                {
+                    string responseBody = await client.GetStringAsync(package_registry_path);
+                    registry = JsonConvert.DeserializeObject<PackageRegistry[]>(responseBody);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+                {
+                    ShowLoadError("Could not download the list of Virtuademy versions: " + ex.Message +
+                                  "\nCheck the internet connection (proxy and firewall included), then press Retry.");
+                    UnityEngine.Debug.LogError($"[Setup] Could not load {package_registry_path}: {ex}");
+                    return false;
+                }
+
+                if (registry == null || registry.Length == 0)
+                {
+                    ShowLoadError("The list of Virtuademy versions was downloaded but is empty. Please report it to the Virtuademy team.");
+                    UnityEngine.Debug.LogError($"[Setup] {package_registry_path} holds no entries.");
+                    return false;
+                }
+
+                packageManagerConfig.AllVersionsPackageRegistry = registry;
+
+                if (packageManagerConfig.AvailableVersions.Count == 0)
+                {
+                    ShowLoadError("The list of Virtuademy versions holds no released version. Please report it to the Virtuademy team.");
+                    UnityEngine.Debug.LogError($"[Setup] {package_registry_path} holds only prerelease entries.");
+                    return false;
+                }
+
+                // Optional: the index only matters when an update runs with automatic resolution
+                // on, so failing to get it must not take the rest of the window down with it.
+                breakingChangesSolverDictionary = await LoadBreakingChangesIndex(client);
+
+                packageManagerConfig.OnDisplayedVersionChanged.AddListener(InstantiatePackagesInPackageList);
+
+                UpdateAvailableVersions();
+
+                //Get reflectis version and update list of packages
+                if (string.IsNullOrEmpty(packageManagerConfig.CurrentInstallationVersion) || !packageManagerConfig.AvailableVersions.Contains(packageManagerConfig.CurrentInstallationVersion))
+                {
+                    packageManagerConfig.CurrentInstallationVersion = packageManagerConfig.AvailableVersions[^1];
+                }
+                if (string.IsNullOrEmpty(packageManagerConfig.DisplayedReflectisVersion) || !packageManagerConfig.AvailableVersions.Contains(packageManagerConfig.DisplayedReflectisVersion))
+                {
+                    packageManagerConfig.DisplayedReflectisVersion = !string.IsNullOrEmpty(packageManagerConfig.CurrentInstallationVersion) ? packageManagerConfig.CurrentInstallationVersion : packageManagerConfig.AvailableVersions[^1];
+                }
+                previousInstallationVersion = packageManagerConfig.CurrentInstallationVersion;
+
+
+                projectConfig.UnityVersionIsMatching = UnityVersion == packageManagerConfig.AllVersionsPackageRegistry.FirstOrDefault(x => x.ReflectisVersion == packageManagerConfig.CurrentInstallationVersion).RequiredUnityVersion;
+                packageManagerConfig.LastRefreshTime = DateTime.Now;
+
+                CheckGitInstallation();
+                CheckEditorModulesInstallation();
+                CheckProjectSettings();
+                CheckHybridCLRInstallation();
+                CheckHybridCLRAssembly();
+
+                GetInstalledPackages();
+                SaveAsset(packageManagerConfig);
+
+                HideLoadError();
+                setupCompleted = true;
+                return true;
             }
-
-            using HttpClient client = new();
-            HttpResponseMessage response = await client.GetAsync(package_registry_path);
-            response.EnsureSuccessStatusCode();
-            string responseBody = await response.Content.ReadAsStringAsync();
-            packageManagerConfig.AllVersionsPackageRegistry = JsonConvert.DeserializeObject<PackageRegistry[]>(responseBody);
-
-            HttpResponseMessage routineResponse = await client.GetAsync(breaking_changes_solver_path);
-            routineResponse.EnsureSuccessStatusCode();
-            string routineResponseBody = await routineResponse.Content.ReadAsStringAsync();
-
-            // Deserialize into a Dictionary<string, string>
-            var dictionary = JsonConvert.DeserializeObject<Dictionary<string, string>>(routineResponseBody);
-            // Convert the keys into tuples
-            breakingChangesSolverDictionary = new Dictionary<(string, string), string>();
-            foreach (var kvp in dictionary)
+            finally
             {
-                // Parse the key into a tuple
-                var key = kvp.Key.Trim('(', ')').Split(", ");
-                var tupleKey = (key[0].Trim('"'), key[1].Trim('"'));
-                breakingChangesSolverDictionary[tupleKey] = kvp.Value;
+                isSetupping = false;
             }
+        }
 
-            packageManagerConfig.OnDisplayedVersionChanged.AddListener(InstantiatePackagesInPackageList);
-
-            UpdateAvailableVersions();
-
-            //Get reflectis version and update list of packages
-            if (string.IsNullOrEmpty(packageManagerConfig.CurrentInstallationVersion) || !packageManagerConfig.AvailableVersions.Contains(packageManagerConfig.CurrentInstallationVersion))
+        /// <summary>
+        /// Downloads BreakingChangesSolverIndex.json. Its keys are written as
+        /// <c>("2025.3", "2025.4")</c>; they become tuples of the two minor versions. Returns an
+        /// empty index, with a warning, when the file cannot be read.
+        /// </summary>
+        private static async Task<Dictionary<(string, string), string>> LoadBreakingChangesIndex(HttpClient client)
+        {
+            Dictionary<(string, string), string> index = new();
+            try
             {
-                packageManagerConfig.CurrentInstallationVersion = packageManagerConfig.AvailableVersions[^1];
+                string body = await client.GetStringAsync(breaking_changes_solver_path);
+                var dictionary = JsonConvert.DeserializeObject<Dictionary<string, string>>(body) ?? new();
+                foreach (var kvp in dictionary)
+                {
+                    var key = kvp.Key.Trim('(', ')').Split(", ");
+                    if (key.Length != 2)
+                    {
+                        UnityEngine.Debug.LogWarning($"[Setup] Ignoring malformed key '{kvp.Key}' in {breaking_changes_solver_path}.");
+                        continue;
+                    }
+                    index[(key[0].Trim('"'), key[1].Trim('"'))] = kvp.Value;
+                }
             }
-            if (string.IsNullOrEmpty(packageManagerConfig.DisplayedReflectisVersion) || !packageManagerConfig.AvailableVersions.Contains(packageManagerConfig.DisplayedReflectisVersion))
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
-                packageManagerConfig.DisplayedReflectisVersion = !string.IsNullOrEmpty(packageManagerConfig.CurrentInstallationVersion) ? packageManagerConfig.CurrentInstallationVersion : packageManagerConfig.AvailableVersions[^1];
+                UnityEngine.Debug.LogWarning($"[Setup] Could not load {breaking_changes_solver_path}: {ex.Message}. " +
+                                             "Automatic breaking-change resolution is unavailable until the window is refreshed.");
             }
-            previousInstallationVersion = packageManagerConfig.CurrentInstallationVersion;
+            return index;
+        }
 
+        private void ShowLoadError(string message)
+        {
+            root.Q<Label>("load-error-text").text = message;
+            root.Q<VisualElement>("load-error").style.display = DisplayStyle.Flex;
+            // Both sections are computed against the registry: without it they would show
+            // placeholders and buttons that act on an empty list.
+            root.Q<VisualElement>("project-settings").style.display = DisplayStyle.None;
+            root.Q<VisualElement>("package-manager").style.display = DisplayStyle.None;
+        }
 
-            projectConfig.UnityVersionIsMatching = UnityVersion == packageManagerConfig.AllVersionsPackageRegistry.FirstOrDefault(x => x.ReflectisVersion == packageManagerConfig.CurrentInstallationVersion).RequiredUnityVersion;
-            packageManagerConfig.LastRefreshTime = DateTime.Now;
-
-            CheckGitInstallation();
-            CheckEditorModulesInstallation();
-            CheckProjectSettings();
-            CheckHybridCLRInstallation();
-            CheckHybridCLRAssembly();
-
-            GetInstalledPackages();
-            SaveAsset(packageManagerConfig);
-
-            setupCompleted = true;
-            isSetupping = false;
+        private void HideLoadError()
+        {
+            root.Q<VisualElement>("load-error").style.display = DisplayStyle.None;
+            root.Q<VisualElement>("project-settings").style.display = DisplayStyle.Flex;
+            root.Q<VisualElement>("package-manager").style.display = DisplayStyle.Flex;
         }
 
 
@@ -408,7 +535,13 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 dataSourcePath = PropertyPath.FromName(nameof(packageManagerConfig.ShowPrereleases)),
                 bindingMode = BindingMode.TwoWay
             });
-            showPrereleaseToggle.RegisterValueChangedCallback(evt => UpdateAvailableVersions());
+            showPrereleaseToggle.RegisterValueChangedCallback(evt =>
+            {
+                // Written here as well as by the binding, so the list is filtered on the new value
+                // whichever of the two runs first.
+                packageManagerConfig.ShowPrereleases = evt.newValue;
+                UpdateAvailableVersions();
+            });
 
             Toggle resolveBreakingChangesAutomatically = packageManagerSection.Q<Toggle>("resolve-breaking-changes-toggle");
             resolveBreakingChangesAutomatically.SetBinding(nameof(resolveBreakingChangesAutomatically.value), new DataBinding()
@@ -507,12 +640,24 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private async void SetupWindowData() => await LoadData();
 
+        /// <summary>
+        /// Moves the selection off a version the list no longer shows. This used to test for the
+        /// literal name "develop", from before entries could declare <c>prerelease</c>: any other
+        /// prerelease stayed selected after "Show pre-releases" was turned off. Asking the list
+        /// covers every entry the toggle hides, whatever its name.
+        /// </summary>
         private void UpdateAvailableVersions()
         {
-            if (packageManagerConfig.DisplayedReflectisVersion == "develop" && !packageManagerConfig.ShowPrereleases)
+            List<string> availableVersions = packageManagerConfig.AvailableVersions;
+            if (availableVersions.Count == 0 || availableVersions.Contains(packageManagerConfig.DisplayedReflectisVersion))
             {
-                packageManagerConfig.DisplayedReflectisVersion = packageManagerConfig.AvailableVersions[^1];
+                return;
             }
+
+            // Back to what the project has installed when the list still shows it, as LoadData does.
+            packageManagerConfig.DisplayedReflectisVersion = availableVersions.Contains(packageManagerConfig.CurrentInstallationVersion)
+                ? packageManagerConfig.CurrentInstallationVersion
+                : availableVersions[^1];
         }
 
         #region Project settings
@@ -1063,12 +1208,28 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             string cur = FilterPatch(packageManagerConfig.DisplayedReflectisVersion);
             (string, string) routineKey = (prev, cur);
 
-            string routinePath = breakingChangesSolverDictionary[routineKey];
+            // Indexing the dictionary directly threw KeyNotFoundException for every step with no
+            // published script — inside an async void, after the manifest had been rewritten.
+            // A step without a script is the normal case (only 2025.3 -> 2025.4 has one); the
+            // later ones ship as menu entries under Virtuademy/Update routines.
+            if (breakingChangesSolverDictionary == null || !breakingChangesSolverDictionary.TryGetValue(routineKey, out string routinePath))
+            {
+                UnityEngine.Debug.LogWarning($"[Setup] No breaking-change script is published for {prev} -> {cur}, so none was downloaded. " +
+                                             "If the release notes name an update routine, run it from Virtuademy > Update routines.");
+                return;
+            }
 
-            using HttpClient client = new();
-            HttpResponseMessage response = await client.GetAsync(routinePath);
-            response.EnsureSuccessStatusCode();
-            string responseBody = await response.Content.ReadAsStringAsync();
+            string responseBody;
+            try
+            {
+                using HttpClient client = new();
+                responseBody = await client.GetStringAsync(routinePath);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                UnityEngine.Debug.LogError($"[Setup] Could not download the breaking-change script for {prev} -> {cur} from {routinePath}: {ex.Message}");
+                return;
+            }
 
             string assetPath = $"{utilities_folder_path}/{routinePath.Split('/').Last()}";
             StreamWriter writer = new(assetPath, false);

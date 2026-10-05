@@ -1,6 +1,36 @@
 .h1 {
 }
 
+/* Brand header, in the manner of the Ready Player Me setup window. The logo image is set
+   from code, because which of the two variants is readable depends on the editor skin:
+   virtuademy-logo-light.png (light lettering) on the dark skin, virtuademy-logo-dark.png on
+   the light one. Both are rasterized from the Landing's themes/virtuademy/full-*.svg. */
+.window-header {
+    align-items: center;
+    padding-top: 12px;
+    padding-bottom: 8px;
+}
+
+.header-logo {
+    width: 100%;
+    max-width: 320px;
+    height: 50px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.header-subtitle {
+    margin-top: 4px;
+    font-size: 14px;
+    -unity-font-style: bold;
+    -unity-text-align: upper-center;
+}
+
+.header-startup-toggle {
+    margin-top: 6px;
+    flex-direction: row-reverse;
+    align-self: center;
+}
+
 .separator {
     background-color: rgb(0, 0, 0);
     height: 1px;
