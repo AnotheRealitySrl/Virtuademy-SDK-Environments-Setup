@@ -49,6 +49,9 @@ Changes on `develop` since the `v1.0.0` tag. `package.json` still reports `1.0.0
 - Turning off *Show pre-releases* moves the selection off any prerelease entry, not only `develop`.
 - Updating with automatic breaking-change resolution on no longer throws when no script is published
   for the version step.
+- The window no longer comes back unbound — text placeholders and every warning icon showing —
+  after an action that reloads the domain (install, update, configure).
+- The interpreter is optional: its group is labelled so and carries no warning icon.
 - A project whose recorded version is no longer in the registry keeps it (shown as *no longer
   available*) instead of being silently relabelled with the newest entry, so the update to a listed
   version is enabled and no longer throws. The update also follows a package whose repository URL

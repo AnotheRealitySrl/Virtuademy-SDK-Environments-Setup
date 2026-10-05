@@ -67,7 +67,7 @@
             </engine:GroupBox>
             <engine:GroupBox name="Interpreter-settings" class="settings-group">
                 <engine:GroupBox name="Interpreter-settings-content" class="settings-group-content">
-                    <engine:Foldout text="Interpreter installation" name="Interpreter-settings-foldout" value="false">
+                    <engine:Foldout text="Interpreter installation (optional)" name="Interpreter-settings-foldout" value="false">
                         <engine:VisualElement name="Interpreter-settings-git" class="settings-item">
                             <engine:VisualElement name="Interpreter-settings-instance-check" class="settings-item-green-icon" />
                             <engine:Label text="Interpreter package installed" name="Label" />
@@ -78,7 +78,6 @@
                         </engine:VisualElement>
                         <engine:Label name="Interpreter-issue-label" class="settings-item-message" style="white-space: normal;" />
                     </engine:Foldout>
-                    <engine:VisualElement name="Interpreter-settings-warning" class="settings-group-warning" />
                 </engine:GroupBox>
                 <engine:GroupBox name="configure-Interpreter-settings-button-container" class="settings-button-container" style="justify-content: space-between; align-items: auto; margin-top: 0; margin-bottom: 0;">
                     <engine:Button text="Install interpreter" name="configure-Interpreter-settings-button" tooltip="Installs the interpreter that runs the C# you write in Assets/HotUpdate, and configures this project's hot-update assembly. Clones two repositories and patches a project-local copy of il2cpp, so it takes a while and needs git on PATH." />

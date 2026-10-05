@@ -202,6 +202,12 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             // Each editor window contains a root VisualElement object
             root = rootVisualElement;
 
+            // The UI below is new, so it has no bindings yet. The flag must be reset here: Unity
+            // carries an EditorWindow's private fields across a domain reload, and every package
+            // action ends in one — a surviving `true` left the rebuilt UI unbound, showing its
+            // placeholders and every warning icon.
+            dataBindingsAdded = false;
+
             // Instantiate UXML
             VisualElement labelFromUXML = m_VisualTreeAsset.Instantiate();
             // Fills the window, so the footer sits at the bottom rather than under the content.
@@ -466,7 +472,8 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 { ("git-installation-warning", nameof(projectConfig.IsGitInstalled), projectSettingsSection.Q<Foldout>("git-installation-foldout")) },
                 { ("editor-configuration-warning", nameof(projectConfig.EditorConfigurationOk), projectSettingsSection.Q<Foldout>("editor-configuration-foldout")) },
                 { ("project-settings-warning", nameof(projectConfig.ProjectSettingsOk), projectSettingsSection.Q<Foldout>("project-settings-foldout")) },
-                { ("Interpreter-settings-warning", nameof(projectConfig.InterpreterReady), projectSettingsSection.Q<Foldout>("Interpreter-settings-foldout")) }
+                // No entry for the interpreter: it is optional, so a project without it is not
+                // flagged. Its two rows still say whether it is installed and ready.
             };
             foreach (var entry in warningIcons)
             {
