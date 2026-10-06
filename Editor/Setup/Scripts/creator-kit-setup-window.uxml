@@ -81,7 +81,7 @@
                     <engine:VisualElement name="Interpreter-settings-warning" class="settings-group-warning" />
                 </engine:GroupBox>
                 <engine:GroupBox name="configure-Interpreter-settings-button-container" class="settings-button-container" style="justify-content: space-between; align-items: auto; margin-top: 0; margin-bottom: 0;">
-                    <engine:Button text="Install interpreter" name="configure-Interpreter-settings-button" tooltip="Installs the interpreter that runs the C# you write in Assets/HotUpdate, and configures this project's hot-update assembly. Clones two repositories and patches a project-local copy of il2cpp, so it takes a while and needs git on PATH." />
+                    <engine:Button text="Install interpreter" name="configure-Interpreter-settings-button" tooltip="Installs the interpreter that runs the C# you write in Assets/VirtuademyEnvironmentScripts, and configures this project's hot-update assembly. Clones two repositories and patches a project-local copy of il2cpp, so it takes a while and needs git on PATH." />
                 </engine:GroupBox>
             </engine:GroupBox>
         </engine:GroupBox>

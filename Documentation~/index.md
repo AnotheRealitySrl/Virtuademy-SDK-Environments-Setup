@@ -67,7 +67,7 @@ shows the warning only when the interpreter is installed but not ready to build.
 | **Project settings** | URP is the render pipeline (default and quality); API compatibility level is .NET Framework 4.8 for Standalone; the build's max texture size override is 1024 | **Configure** applies all three. It overwrites those project settings — make a backup or commit first. |
 | **Interpreter installation (optional)** | The HybridCLR interpreter package is installed, and the project's hot-update assembly is set up | **Install interpreter** installs HybridCLR and configures the hot-update assembly in one go, once Unity has recompiled. When HybridCLR is already installed the button reads **Fix** and runs the configuration again. It clones two repositories and patches a project-local copy of il2cpp, so it takes a while. When the assembly is not ready, the reason is printed under the two rows. |
 
-The interpreter is what runs the C# you write under `Assets/HotUpdate`. It is **optional**: a project
+The interpreter is what runs the C# you write under `Assets/VirtuademyEnvironmentScripts`. It is **optional**: a project
 that only uses Visual Scripting does not need it, and nothing else in the window depends on it. Its setup is owned by the
 `Virtuademy-SDK-Environments` package, so the second row can only turn green once that package is
 installed (see below). If the button reports that HybridCLR is installed but the setup could not

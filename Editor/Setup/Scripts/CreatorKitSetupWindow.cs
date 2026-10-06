@@ -556,7 +556,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             };
             interpreterButtonTooltipBinding.sourceToUiConverters.AddConverter((ref bool installed) => installed
                 ? "Runs the interpreter configuration again: aligns and registers this project's hot-update assembly. The reason it is needed is shown above."
-                : "Installs the interpreter that runs the C# you write in Assets/HotUpdate, and configures this project's hot-update assembly. Clones two repositories and patches a project-local copy of il2cpp, so it takes a while and needs git on PATH.");
+                : "Installs the interpreter that runs the C# you write in Assets/VirtuademyEnvironmentScripts, and configures this project's hot-update assembly. Clones two repositories and patches a project-local copy of il2cpp, so it takes a while and needs git on PATH.");
             hybridCLRDownloadButton.SetBinding(nameof(hybridCLRDownloadButton.tooltip), interpreterButtonTooltipBinding);
 
             // Optional, so absent is fine; installed but not ready is a warning.

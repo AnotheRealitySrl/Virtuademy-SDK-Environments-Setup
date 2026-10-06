@@ -43,6 +43,9 @@ platform version is published (see the README's Known issues).
 
 ### Fixed
 
+- The interpreter row names the folder interpreted scripts live in since
+  Virtuademy-SDK-Environments moved them: `Assets/VirtuademyEnvironmentScripts` (was
+  `Assets/HotUpdate`).
 - Packages with the `virtuademy-*` and `spacs-*` prefixes are recognised as installed.
 - A leaf package (no dependencies) can be installed; a dependency cycle or a typo in the registry
   no longer throws.
