@@ -17,7 +17,7 @@ This README is for whoever maintains the installer or publishes the files it rea
    shows the reason with a **Retry** button (`ShowLoadError`); the index is optional — failing to
    get it is a Console warning and an empty index.
 2. Checks the project: git on the editor's `PATH`, editor version equal to the installed entry's
-   `requiredUnityVersion`, Android/WebGL/Windows modules, URP + .NET Framework 4.8 (Standalone) +
+   `requiredUnityVersion`, Android/iOS/WebGL/Windows modules, URP + .NET Framework 4.8 (Standalone) +
    max texture size override 1024, HybridCLR installed and the hot-update assembly ready.
 3. Lists the packages of the selected registry entry and installs, uninstalls or moves them by
    writing `"{url}#{version}"` lines into `Packages/manifest.json`, then calling `Client.Resolve`.

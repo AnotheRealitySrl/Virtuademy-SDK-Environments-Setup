@@ -43,6 +43,9 @@ platform version is published (see the README's Known issues).
 
 ### Fixed
 
+- The editor-modules check includes **iOS** build support. Interpreted scripts are compiled for
+  iOS too, so without the module the setup looked complete and every build of a project with
+  scripts stopped at "No DLL was produced for: iOS". Every project is now asked for it, scripts or not.
 - The interpreter row names the folder interpreted scripts live in since
   Virtuademy-SDK-Environments moved them: `Assets/VirtuademyEnvironmentScripts` (was
   `Assets/HotUpdate`).

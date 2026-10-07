@@ -55,6 +55,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             public Dictionary<string, bool> InstalledModules = new()
             {
                 { "Android", true },
+                { "iOS", true },
                 { "WebGL", true },
                 { "Windows", true }
             };
@@ -191,7 +192,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return "git could not be run from the editor.";
 
             if (GetInstalledModules().ContainsValue(false))
-                return "some editor modules (Android, WebGL, Windows) are missing.";
+                return "some editor modules (Android, iOS, WebGL, Windows) are missing.";
 
             RenderPipelineAsset renderPipeline = AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(AssetDatabase.GUIDToAssetPath(render_pipeline_asset_guid));
             if (!IsRenderPipelineConfigured(renderPipeline) || !GetProjectSettingsStatus() || !GetMaxTextureSizeOverride())
@@ -835,9 +836,14 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             // the answer for whichever group Enum.GetValues yielded last — paired with targets that
             // do not belong to it. IsBuildTargetSupported is false for every such pair, so the
             // check reported "editor modules missing" regardless of what was actually installed.
+            //
+            // iOS is checked with the other three because interpreted scripts are compiled for every
+            // target in HotUpdateSetupper.TARGETS, iOS included: without the module the setup looked
+            // complete and every build of a project with scripts stopped at "No DLL was produced for: iOS".
             return new()
             {
                 { "Android", BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Android, BuildTarget.Android) },
+                { "iOS", BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.iOS, BuildTarget.iOS) },
                 { "WebGL", BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.WebGL, BuildTarget.WebGL) },
                 { "Windows", BuildPipeline.IsBuildTargetSupported(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows) },
             };

@@ -13,7 +13,7 @@ editor-only (it adds nothing to a build).
   fetched from a git repository. Download it from <https://git-scm.com/downloads>.
 - **The Unity version** required by the platform version you want. The setup window tells you
   which one it expects and marks the row red when the open editor does not match.
-- **Editor modules**: Android, WebGL and Windows build support, installed from Unity Hub.
+- **Editor modules**: Android, iOS, WebGL and Windows build support, installed from Unity Hub.
 
 ## How to install
 
@@ -63,7 +63,7 @@ shows the warning only when the interpreter is installed but not ready to build.
 | Group | What is checked | How to fix it |
 |---|---|---|
 | **Git installation** | `git --version` runs from the editor | **Download** opens the git website. If git works in a terminal but the row is red, the editor was started without git on its `PATH` (common when launched from Unity Hub): restart the editor from a shell where `git` works. The Console says which case it is. |
-| **Editor configuration** | The editor version equals the one required by the installed platform version, character for character (e.g. `6000.3.21f1`); Android, WebGL and Windows build support are installed | Install the right editor and the missing modules from Unity Hub. |
+| **Editor configuration** | The editor version equals the one required by the installed platform version, character for character (e.g. `6000.3.21f1`); Android, iOS, WebGL and Windows build support are installed | Install the right editor and the missing modules from Unity Hub. |
 | **Project settings** | URP is the render pipeline (default and quality); API compatibility level is .NET Framework 4.8 for Standalone; the build's max texture size override is 1024 | **Configure** applies all three. It overwrites those project settings — make a backup or commit first. |
 | **Interpreter installation (optional)** | The HybridCLR interpreter package is installed, and the project's hot-update assembly is set up | **Install interpreter** installs HybridCLR and configures the hot-update assembly in one go, once Unity has recompiled. When HybridCLR is already installed the button reads **Fix** and runs the configuration again. It clones two repositories and patches a project-local copy of il2cpp, so it takes a while. When the assembly is not ready, the reason is printed under the two rows. |
 
