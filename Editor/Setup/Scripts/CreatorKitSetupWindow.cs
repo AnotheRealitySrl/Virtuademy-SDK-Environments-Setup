@@ -200,7 +200,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             return null;
         }
 
-        [MenuItem("Virtuademy/Setup/Setup project")]
+        [MenuItem("Virtuademy/Setup project")]
         public static void ShowWindow()
         {
             CreatorKitSetupWindow wnd = GetWindow<CreatorKitSetupWindow>();
