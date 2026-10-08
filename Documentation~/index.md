@@ -42,7 +42,7 @@ When you open the project, the window opens by itself **only if something needs 
 Virtuademy-SDK-Environments is not installed yet, git cannot be run, an editor module is missing,
 or the project settings below are not configured. The Console says which. A project that is set up
 opens without it, and if you close it, it stays closed until the editor is restarted. You can
-always open it from **Virtuademy ▸ Setup ▸ Setup project**.
+always open it from **Virtuademy ▸ Setup project**.
 
 To stop it opening by itself, clear **Open this window when the project opens and needs setup** at
 the foot of the window. The choice is saved for this project on this machine.

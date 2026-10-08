@@ -5,7 +5,7 @@ else arrives through it — so it is the one package whose own URL has to be typ
 
 - Package id `com.anotherealitysrl.virtuademy-sdk-environments-setup`, assembly and namespace
   `Virtuademy.SDK.Environments.Setup.Editor`, editor-only.
-- Entry point: `CreatorKitSetupWindow`, menu **Virtuademy ▸ Setup ▸ Setup project**.
+- Entry point: `CreatorKitSetupWindow`, menu **Virtuademy ▸ Setup project**.
 - **User documentation** (install, every check, every button): [Documentation~/index.md](Documentation~/index.md).
 
 This README is for whoever maintains the installer or publishes the files it reads.

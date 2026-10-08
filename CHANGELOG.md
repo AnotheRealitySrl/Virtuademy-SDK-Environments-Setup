@@ -22,7 +22,7 @@ platform version is published (see the README's Known issues).
   Existing projects migrate with **Virtuademy ▸ Update routines ▸ v2026.5 -> v2026.6** in
   `Virtuademy-SDK-Environments`.
 - The menu moved from **Reflectis Worlds ▸ Creator Kit ▸ Setup ▸ Setup project** to
-  **Virtuademy ▸ Setup ▸ Setup project**.
+  **Virtuademy ▸ Setup project** (the Setup submenu went away on 2026-10-07).
 - New projects get their settings at `Assets/Virtuademy/Editor/Settings/SetupConfiguration.asset`
   (was `Assets/CreatorKit/Editor/Settings/CreatorKitSetupConfiguration.asset`); the asset is found
   by type, so existing ones keep working where they are.
