@@ -65,7 +65,7 @@ shows the warning only when the interpreter is installed but not ready to build.
 | **Git installation** | `git --version` runs from the editor | **Download** opens the git website. If git works in a terminal but the row is red, the editor was started without git on its `PATH` (common when launched from Unity Hub): restart the editor from a shell where `git` works. The Console says which case it is. |
 | **Editor configuration** | The editor version equals the one required by the installed platform version, character for character (e.g. `6000.3.21f1`); Android, iOS, WebGL and Windows build support are installed | Install the right editor and the missing modules from Unity Hub. |
 | **Project settings** | URP is the render pipeline (default and quality); API compatibility level is .NET Framework 4.8 for Standalone; the build's max texture size override is 1024 | **Configure** applies all three. It overwrites those project settings — make a backup or commit first. |
-| **Interpreter installation (optional)** | The HybridCLR interpreter package is installed, and the project's hot-update assembly is set up | **Install interpreter** installs HybridCLR and configures the hot-update assembly in one go, once Unity has recompiled. When HybridCLR is already installed the button reads **Fix** and runs the configuration again. It clones two repositories and patches a project-local copy of il2cpp, so it takes a while. When the assembly is not ready, the reason is printed under the two rows. |
+| **Interpreter installation (optional)** | The HybridCLR interpreter package is installed at the version your Virtuademy version uses, and the project's hot-update assembly is set up | **Install interpreter** installs the HybridCLR of your Virtuademy version and configures the hot-update assembly in one go, once Unity has recompiled. When HybridCLR is already installed the button reads **Fix**: it switches HybridCLR to your version's when the project has another one, reinstalls the interpreter when the one on this computer belongs to another HybridCLR version, and runs the configuration again. It clones two repositories and patches a project-local copy of il2cpp, so it takes a while. When the assembly is not ready, the reason is printed under the two rows. Versions before 2026.6 have no interpreter. |
 
 The interpreter is what runs the C# you write under `Assets/VirtuademyEnvironmentScripts`. It is **optional**: a project
 that only uses Visual Scripting does not need it, and nothing else in the window depends on it. Its setup is owned by the
@@ -114,6 +114,32 @@ Some version steps need more than new packages — renamed scripts, moved assets
 by the update routines under **Virtuademy ▸ Update routines** (shipped with
 `Virtuademy-SDK-Environments`). Run the routine for your step when the release notes say so.
 
+The update moves HybridCLR too, when the project has it: to the version the new Virtuademy version
+uses, and out of the project when the new version has no interpreter. The interpreter on this
+computer is reinstalled for the new HybridCLR after Unity recompiles.
+
+### From the command line
+
+**Configure**, **Install** of Virtuademy SDK Environments and **Install interpreter** also run
+without the window, for a build machine or a fresh clone. Close the editor first, then run:
+
+```
+Unity -batchmode -nographics -projectPath <your project> -logFile -
+      -executeMethod Virtuademy.SDK.Environments.Setup.Editor.SetupCli.Run
+      -vdSetupVersion <version>
+```
+
+`<version>` is a version as the window's list shows it, for example `2026.6.0`, or `develop` for
+the pre-release. The command has to be run again until it exits with `0`. Exit code `2` means "the
+project changed, run again", and a new project takes three runs. Any other code is an error, named
+in the log. On a fresh clone of a project that is already set up, the same command skips the
+packages, which arrive with the clone. It redoes the two things stored per machine: the max
+texture size override and the interpreter inside the local IL2CPP. `-vdSetupSteps check` changes
+nothing and exits with `0` only when the project is set up.
+
+The command line does not move a project to another version. For that, use **Update packages to
+selected version** in the window.
+
 ## What the installer writes to your project
 
 - `Packages/manifest.json` — one `"<package id>": "<git url>#<ref>"` line per installed package.
@@ -126,7 +152,8 @@ by the update routines under **Virtuademy ▸ Update routines** (shipped with
   under `Assets/CreatorKit/Editor/Settings/` keeps working.
 - `Assets/Virtuademy/Editor/Scripts/` — the downloaded breaking-change scripts, only when automatic
   resolution is on.
-- Project settings, only when you press **Configure** or **Install interpreter**.
+- Project settings, only when you press **Configure** or **Install interpreter**, or run them from
+  the command line.
 
 ## Troubleshooting
 

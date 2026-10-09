@@ -14,11 +14,23 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         [SerializeField] private bool prerelease;
         [SerializeField] private PackageDefinition[] packages;
         [SerializeField] private Dictionary<string, string[]> dependencies;
+        [SerializeField] private PackageDefinition interpreter;
 
         public string ReflectisVersion => reflectisVersion;
         public string RequiredUnityVersion => requiredUnityVersion;
         public PackageDefinition[] Packages => packages;
         public Dictionary<string, string[]> Dependencies => dependencies ??= new();
+
+        /// <summary>
+        /// The HybridCLR package that interprets environment scripts in this version (name, url and
+        /// version, a git tag), or null when the version has no interpreter, as before 2026.6. It
+        /// must be the version the player of this release runs.
+        ///
+        /// Not one of <see cref="Packages"/> on purpose: the interpreter is optional and installed
+        /// only by Install interpreter, while "Update packages to selected version" installs every
+        /// entry of Packages and the uninstall path removes hidden packages nothing depends on.
+        /// </summary>
+        public PackageDefinition Interpreter => interpreter;
 
         /// <summary>
         /// Kept out of the version list unless the window is showing prereleases, so an entry can

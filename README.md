@@ -5,7 +5,8 @@ else arrives through it — so it is the one package whose own URL has to be typ
 
 - Package id `com.anotherealitysrl.virtuademy-sdk-environments-setup`, assembly and namespace
   `Virtuademy.SDK.Environments.Setup.Editor`, editor-only.
-- Entry point: `CreatorKitSetupWindow`, menu **Virtuademy ▸ Setup project**.
+- Entry points: `CreatorKitSetupWindow`, menu **Virtuademy ▸ Setup project**; `SetupCli.Run` for
+  batch mode (see "Command line" below).
 - **User documentation** (install, every check, every button): [Documentation~/index.md](Documentation~/index.md).
 
 This README is for whoever maintains the installer or publishes the files it reads.
@@ -18,7 +19,8 @@ This README is for whoever maintains the installer or publishes the files it rea
    get it is a Console warning and an empty index.
 2. Checks the project: git on the editor's `PATH`, editor version equal to the installed entry's
    `requiredUnityVersion`, Android/iOS/WebGL/Windows modules, URP + .NET Framework 4.8 (Standalone) +
-   max texture size override 1024, HybridCLR installed and the hot-update assembly ready.
+   max texture size override 1024, HybridCLR installed at the entry's `interpreter` version, the
+   local IL2CPP at the same version, and the hot-update assembly ready.
 3. Lists the packages of the selected registry entry and installs, uninstalls or moves them by
    writing `"{url}#{version}"` lines into `Packages/manifest.json`, then calling `Client.Resolve`.
 
@@ -47,10 +49,131 @@ neither sees those packages as installed nor unpins them on re-resolve.
 
 The hot-update configuration is owned by `HotUpdateSetupper` in `Virtuademy-SDK-Environments`, which
 only compiles once HybridCLR is installed, so the window reaches it **by reflection**
-(`GetSetupIssue`, `Setup`). When HybridCLR is missing, the window installs it from
-`https://github.com/focus-creative-games/hybridclr_unity.git` and raises the session flag
-`PENDING_HYBRIDCLR_SETUP`; the setupper picks the job up on the domain reload after the import. The
-key is duplicated on purpose (`HotUpdateSetupper.PENDING_SETUP_KEY`) — keep the two equal.
+(`GetSetupIssue`, `Setup`, and `GetInterpreterVersionIssue` when the SDK has it).
+
+**Which HybridCLR is the registry's choice.** Each entry from 2026.6 on declares it in `interpreter`
+(below): the tag the release's player runs. The window never installs an unpinned HybridCLR. An
+unpinned one is whatever HybridCLR released last, and v9.0.0 (2026-10-08) renamed the namespaces
+the SDK compiles against.
+- **Install interpreter** adds the installed entry's `interpreter` (`url#version`) and raises the
+  session flag `PENDING_HYBRIDCLR_SETUP`. The setupper picks the job up on the domain reload after
+  the import. The key is duplicated on purpose (`HotUpdateSetupper.PENDING_SETUP_KEY`): keep the
+  two equal.
+- An entry with no `interpreter`, or with a malformed one, gets no HybridCLR added: the button
+  logs why. A malformed declaration needs the name `com.code-philosophy.hybridclr`, a url and a
+  version; it is ignored with an error rather than written into the manifest. For a project
+  that already has HybridCLR, **Fix** still runs the configuration, as before.
+- **The interpreter row is not ready**, and its button reads **Fix**, when either:
+  - the manifest asks for a HybridCLR other than the entry's (checked first: another HybridCLR
+    may not even compile against the SDK); or
+  - the interpreter in the project's local IL2CPP copy (`HybridCLRData/`) is not the package's version
+    (`GetInterpreterVersionIssue`, from Virtuademy-SDK-Environments; not part of the publish gate).
+- **Fix** switches the manifest to the entry's HybridCLR, raises the flag and resolves. The setup
+  then reinstalls the local IL2CPP for the new version.
+- **Update packages to selected version** moves HybridCLR with the version
+  (`AlignInterpreterWithVersion`). HybridCLR is not one of "our" packages, so the package loops do
+  not see it:
+
+| Project | Target entry | Result |
+|---|---|---|
+| No HybridCLR | any | Nothing: the interpreter stays optional |
+| HybridCLR | same `interpreter` | Nothing |
+| HybridCLR | another `interpreter` | Manifest line moved, flag raised: the setup reinstalls after the resolve |
+| HybridCLR | no `interpreter` (before 2026.6) | HybridCLR removed and listed in the removed-packages dialog |
+| HybridCLR | malformed `interpreter` | Left as it is, with the error logged |
+
+### Command line (`SetupCli`)
+
+`SetupCli.Run` does what three of the window's buttons do, in batch mode: **Configure**
+(`configure`), **Install** next to Virtuademy SDK Environments at a registry version (`sdk`), and
+**Install interpreter** (`interpreter`).
+
+```
+Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerErrors
+      -executeMethod Virtuademy.SDK.Environments.Setup.Editor.SetupCli.Run
+      -vdSetupVersion develop [-vdSetupSteps configure,sdk,interpreter | check]
+      [-vdSetupRegistry <url or file>]
+```
+
+- **One launch, one round.** Every package change ends in a resolve and a domain reload, which
+  would cut a running method short. A launch applies what it can, stops after the first change
+  that needs a restart and exits with `2`; the caller launches again until the code is `0`. A new
+  project takes three launches, measured on a scratch project on 2026-10-09:
+  1. Configure and the SDK packages, written to the manifest (about 20 s);
+  2. the entry's HybridCLR (`interpreter`), written to the manifest, after the SDK packages
+     resolve (about 90 s);
+  3. the interpreter, through `HotUpdateSetupper.Setup`, which clones hybridclr and il2cpp_plus
+     (about 40 s).
+
+  A fourth launch is needed only when the interpreter setup is not ready until a recompilation.
+- **The interpreter step follows the registry.** It installs the HybridCLR that the project's
+  recorded version declares. When the manifest asks for another one it switches to it, which is a
+  repair rather than a version update; exit `2`. When the local IL2CPP holds another libil2cpp,
+  the setup reinstalls it.
+- **`-ignoreCompilerErrors`** lets Unity run the method on a project that does not compile, for
+  example one that pulled HybridCLR 9.0.0, so the step can repair it. Measured: two launches, from
+  24 compile errors to `0`. Without the flag, Unity aborts before `-executeMethod` (exit `1`). The
+  report's `scriptsCompile` says whether the scripts compile, and `check` fails when they do not.
+- **`-vdSetupRegistry`** reads the registry from another URL or from a local file (for example the
+  meta-repo's `contracts/PackageRegistry.json`), to try a registry change before publishing it.
+  The window always reads the published one.
+- **Nothing has to survive a reload.** The steps write the manifest directly, as `InstallPackages`
+  does, instead of calling `Client.Add`/`Client.Resolve`; the next launch resolves at startup. The
+  interpreter retries are counted in `Library/VirtuademySetupCli.interpreter-attempts`, at most
+  three, as `HotUpdateSetupper` allows itself.
+- **Same logic as the window.** Configure, the install with dependencies, the configuration asset
+  and the interpreter checks are internal static methods of `CreatorKitSetupWindow`, called by
+  both. The files have the same format: manifest lines `url#version`, and `SetupConfiguration.asset`
+  with *Show pre-releases* on when the version is a prerelease, so the window lists it.
+- **Which packages.** The `sdk` step installs Virtuademy-SDK-Environments and its dependencies,
+  which is the window's **Install** click. On a new project the window offers that click only for
+  its default version (the newest release). For another version, such as `develop`, the window
+  goes through *Update packages to selected version*, which installs **every** package of the
+  entry. Today's entries list nothing outside that closure, so both paths install the same set.
+  An entry that adds another package would make them differ.
+- **Stricter than the window on the Unity version.** The window shows a mismatch with the entry's
+  `requiredUnityVersion` in red. The `sdk` step refuses it (exit `14`), because nobody is watching a
+  batch run.
+- **No update.** The `sdk` step refuses a project that already has Virtuademy packages of another
+  version, or a manifest asking for another ref (exit `15`). Moving between versions is the
+  window's *Update packages to selected version*, which removes what the new version drops. "Already
+  installed" compares the Virtuademy-SDK-Environments line only, not its dependencies.
+- **A refused run writes nothing.** `SetupConfiguration.asset` is created or changed only when a
+  step is about to write.
+- **`check`** changes nothing. It runs after the git and modules checks, so those still exit `11`
+  and `12`. Then it exits `0` when the project is set up and `3` otherwise. "Set up" means:
+  - the project settings are configured;
+  - Virtuademy-SDK-Environments is registered (whatever its version);
+  - the scripts compile;
+  - the interpreter is ready, counted as the window counts it: optional, but required once
+    HybridCLR is installed. That includes the HybridCLR the recorded version declares, so with
+    HybridCLR installed `check` reads the registry. The report's `hybridClrVersionChecked` is
+    false when it could not.
+- The method exits the editor itself, so `-quit` is not needed. Every launch ends with a
+  `[SetupCli] REPORT` line (one JSON object with every check) and `[SetupCli] EXIT <code>`.
+- **Exit `1` without those two lines is Unity's own failure, not SetupCli's.** It happens when the
+  packages do not resolve or the scripts do not compile, and Unity aborts the batch run before
+  `-executeMethod`. The cause is earlier in the log.
+
+| Exit | Meaning |
+|---|---|
+| `0` | Done |
+| `1` | Unexpected exception (stack trace in the log), or Unity aborted before `-executeMethod` |
+| `2` | The project changed: launch again |
+| `3` | `check`: not set up |
+| `10` | Bad arguments, a version the registry does not list, or one before 2026.6 (no Virtuademy-SDK-Environments) |
+| `11` | git cannot be run from the editor process |
+| `12` | Editor modules missing (Android, iOS, WebGL, Windows) |
+| `13` | Registry unreadable or empty, it no longer lists the project's recorded version, or its `interpreter` is malformed |
+| `14` | The editor is not the entry's `requiredUnityVersion` |
+| `15` | Another Virtuademy version is installed |
+| `16` | Virtuademy-SDK-Environments missing or not resolved, or the project records no version |
+| `17` | Interpreter setup failed: the entry declares no `interpreter`, HybridCLR did not resolve or compile, or three configurations did not make it ready |
+| `18` | Project settings could not be applied |
+
+`Virtuademy-Env-Test` drives it with `scripts/unity.sh setup <version>`, which passes
+`-ignoreCompilerErrors` and relaunches until the code is not `2`; `SETUP_REGISTRY=<file or url>`
+becomes `-vdSetupRegistry`.
 
 ## What it reads
 
@@ -167,6 +290,32 @@ A package with no dependencies needs no key. A cycle is expanded once and does n
 dependency naming a package that is not in the entry's `packages` is logged as an error and skipped
 — the install goes ahead without it, so watch the Console after editing the file.
 
+#### `interpreter` — the HybridCLR of the release
+
+```json
+"interpreter": {
+  "name": "com.code-philosophy.hybridclr",
+  "displayName": "HybridCLR",
+  "description": "Interprets the C# scripts of an environment. …",
+  "url": "https://github.com/focus-creative-games/hybridclr_unity.git",
+  "version": "v8.12.0"
+}
+```
+
+- **The value.** It is the HybridCLR that the release's player runs: the tag
+  `Virtuademy-Unity/Packages/manifest.json` pins at the release commit. The meta-repo's
+  `docs/deploy.md` has the check.
+- **Where it goes.** In the entry, not in `packages`. The interpreter is optional and installed
+  only by Install interpreter. *Update packages to selected version* installs every element of
+  `packages`, and the uninstall path removes hidden packages nothing depends on, so a HybridCLR
+  there would end up in every project, or out of it.
+- **Which entries have it.** Only entries from 2026.6 on, the first platform version with
+  interpreted scripts. An entry without it offers no interpreter.
+- **Older installers ignore it** (1.x, and 2.x before this field): the registry is read with
+  Newtonsoft.Json, which skips fields the class does not declare.
+- **Changing it on an existing entry** (in practice `develop`) moves the projects on that entry the
+  next time their owner presses **Fix**, or runs `SetupCli`.
+
 #### `installationSource` — leave it out
 
 `PackageDefinition` also has an `installationSource` (`Git`, the default, or `Submodule`). No
@@ -209,6 +358,12 @@ To test a registry change without touching the blob, point an entry at a branch 
 
 ## Known issues
 
+- **The max texture size override is not committed.** Configure sets
+  `EditorUserBuildSettings.overrideMaxTextureSize`, which Unity stores in
+  `Library/EditorUserBuildSettings.asset`, and `Library/` is never committed. So on every fresh
+  clone the check fails again and the window opens until someone presses Configure, even though the
+  rest of the configuration arrived with the clone. `SetupCli` with `-vdSetupSteps configure` is a
+  one-line fix after a clone; the check itself treats a per-machine setting as a project setting.
 - **Every clone starts dirty.** Some committed `.asset` files under `Editor/Setup/ProjectSettings/`
   are stored with line endings that git normalizes on checkout, so `git status` reports changes
   nobody made. See the meta-repo's `docs/line-endings.md` for the platform policy; this repo has

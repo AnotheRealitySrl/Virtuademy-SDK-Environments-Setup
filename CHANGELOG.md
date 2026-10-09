@@ -40,9 +40,28 @@ platform version is published (see the README's Known issues).
   Virtuademy-SDK-Environments is not installed or a local check (git, editor modules, project
   settings) fails. A toggle at the foot of the window turns this off for the project on this
   machine.
+- **Command line** (`SetupCli.Run`): Configure, the install of Virtuademy-SDK-Environments at a
+  given registry version, and Install interpreter, in batch mode. One launch does one round and
+  exits with `2` while another launch is needed, `0` when done, `1x` on a failure; `-vdSetupSteps
+  check` only reports. Additive: the window behaves as before, and the files written have the same
+  format as the window's. A version update (a project already on another version) stays in the
+  window. `-vdSetupRegistry` reads a registry from another URL or a local file, to try a change
+  before publishing it.
+- **HybridCLR follows the Virtuademy version.** A registry entry declares the HybridCLR its release
+  runs in `interpreter` (url, version tag), outside `packages`.
+  - **Install interpreter** installs that one.
+  - **Fix** switches a project that has another HybridCLR. It also reinstalls the interpreter in
+    the local IL2CPP when Virtuademy-SDK-Environments reports another libil2cpp version
+    (`GetInterpreterVersionIssue`, used only when the SDK has it).
+  - **Update packages to selected version** moves HybridCLR with the version, or removes it when
+    the target declares no interpreter, and lists it in the removed-packages dialog.
+  - Older installers ignore the field.
 
 ### Fixed
 
+- **Install interpreter no longer installs whatever HybridCLR released last.** It used to add
+  HybridCLR's git URL without a ref. HybridCLR v9.0.0 (2026-10-08) renamed the namespaces the SDK
+  compiles against, so every new install from that day failed to compile.
 - The editor-modules check includes **iOS** build support. Interpreted scripts are compiled for
   iOS too, so without the module the setup looked complete and every build of a project with
   scripts stopped at "No DLL was produced for: iOS". Every project is now asked for it, scripts or not.

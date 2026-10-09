@@ -104,16 +104,18 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         // The installer excludes itself. Listed under both names for the same reason as above:
         // a project installed before the rename still carries the old id.
-        private readonly List<string> packages_to_exclude = new()
+        internal static readonly List<string> packages_to_exclude = new()
         {
             "com.anotherealitysrl.virtuademy-sdk-environments-setup",
             "com.anotherealitysrl.reflectis-creatorkit-worlds-setup",
         };
 
-        private static bool IsOurPackage(string packageName)
+        internal static bool IsOurPackage(string packageName)
             => package_prefixes.Any(prefix => packageName.StartsWith(prefix, StringComparison.Ordinal));
 
-        private const string hybridclr_package_url = "https://github.com/focus-creative-games/hybridclr_unity.git";
+        // HybridCLR's URL and version are not here: each registry entry declares the one its
+        // release runs (PackageRegistry.Interpreter). The name finds it in a project.
+        internal const string hybridclr_package_name = "com.code-philosophy.hybridclr";
 
         // Must stay in sync with HotUpdateSetupper.PENDING_SETUP_KEY: the setupper lives in another
         // package and this assembly cannot reference it, so the key is duplicated on purpose.
@@ -131,7 +133,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         #region Project configuration
 
-        private string UnityVersion => InternalEditorUtility.GetFullUnityVersion().Split(' ')[0];
+        internal static string UnityVersion => InternalEditorUtility.GetFullUnityVersion().Split(' ')[0];
 
         #endregion
 
@@ -142,7 +144,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         // teardown can move the registry again. Installers up
         // to 1.x read reflectis2023-public/PackageManager/, which receives registry updates up to
         // and including 2026.6 — the version that brings the migration to this installer.
-        private const string package_registry_path = "https://spacsglobal.dfs.core.windows.net/spacspublic/sdkpackagesregistry/PackageRegistry.json";
+        internal const string package_registry_path = "https://spacsglobal.dfs.core.windows.net/spacspublic/sdkpackagesregistry/PackageRegistry.json";
         private const string breaking_changes_solver_path = "https://spacsglobal.dfs.core.windows.net/spacspublic/sdkpackagesregistry/BreakingChangesSolverIndex.json";
 
         private static Dictionary<(string, string), string> breakingChangesSolverDictionary;
@@ -154,7 +156,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         // Resolves by package name whether the package is a git dependency or an embedded folder.
         private const string package_root = "Packages/com.anotherealitysrl.virtuademy-sdk-environments-setup";
 
-        private const string sdk_environments_package_name = "com.anotherealitysrl.virtuademy-sdk-environments";
+        internal const string sdk_environments_package_name = "com.anotherealitysrl.virtuademy-sdk-environments";
 
         // Editor/Setup/ProjectSettings/DefaultRendererPipelineAsset.asset — the same asset the
         // window receives as renderPipelineAsset through its script's default references, which a
@@ -194,12 +196,16 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             if (GetInstalledModules().ContainsValue(false))
                 return "some editor modules (Android, iOS, WebGL, Windows) are missing.";
 
-            RenderPipelineAsset renderPipeline = AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(AssetDatabase.GUIDToAssetPath(render_pipeline_asset_guid));
-            if (!IsRenderPipelineConfigured(renderPipeline) || !GetProjectSettingsStatus() || !GetMaxTextureSizeOverride())
+            if (!IsRenderPipelineConfigured(LoadDefaultRenderPipelineAsset()) || !GetProjectSettingsStatus() || !GetMaxTextureSizeOverride())
                 return "the project settings are not configured.";
 
             return null;
         }
+
+        /// <summary>The render pipeline asset Configure applies, loaded by GUID for callers that
+        /// have no window instance to read <see cref="renderPipelineAsset"/> from.</summary>
+        internal static RenderPipelineAsset LoadDefaultRenderPipelineAsset()
+            => AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(AssetDatabase.GUIDToAssetPath(render_pipeline_asset_guid));
 
         [MenuItem("Virtuademy/Setup project")]
         public static void ShowWindow()
@@ -289,18 +295,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             isSetupping = true;
             try
             {
-                string packageManagerAssetGuid = AssetDatabase.FindAssets("t:" + typeof(PackageManagerConfiguration).Name).ToList().FirstOrDefault();
-                packageManagerConfig = AssetDatabase.LoadAssetAtPath<PackageManagerConfiguration>(AssetDatabase.GUIDToAssetPath(packageManagerAssetGuid));
-
-                if (packageManagerConfig == null)
-                {
-                    EnsureFolderExists(settings_folder_path);
-
-                    packageManagerConfig = CreateInstance<PackageManagerConfiguration>();
-                    string settingsAssetPath = $"{settings_folder_path}/{setup_configuration_path}";
-                    AssetDatabase.CreateAsset(packageManagerConfig, settingsAssetPath);
-                    AssetDatabase.SaveAssets();
-                }
+                packageManagerConfig = LoadOrCreateConfiguration();
 
                 using HttpClient client = new();
 
@@ -394,6 +389,28 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             {
                 isSetupping = false;
             }
+        }
+
+        /// <summary>
+        /// The project's setup state: found by type wherever it is, created at the default path
+        /// the first time.
+        /// </summary>
+        internal static PackageManagerConfiguration LoadOrCreateConfiguration()
+        {
+            string packageManagerAssetGuid = AssetDatabase.FindAssets("t:" + typeof(PackageManagerConfiguration).Name).ToList().FirstOrDefault();
+            PackageManagerConfiguration config = AssetDatabase.LoadAssetAtPath<PackageManagerConfiguration>(AssetDatabase.GUIDToAssetPath(packageManagerAssetGuid));
+
+            if (config == null)
+            {
+                EnsureFolderExists(settings_folder_path);
+
+                config = CreateInstance<PackageManagerConfiguration>();
+                string settingsAssetPath = $"{settings_folder_path}/{setup_configuration_path}";
+                AssetDatabase.CreateAsset(config, settingsAssetPath);
+                AssetDatabase.SaveAssets();
+            }
+
+            return config;
         }
 
         /// <summary>
@@ -774,7 +791,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             }
         }
 
-        private static bool TryGetGitVersion(out string version)
+        internal static bool TryGetGitVersion(out string version)
         {
             version = null;
             try
@@ -829,7 +846,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             projectConfig.AllEditorModulesInstalled = !projectConfig.InstalledModules.Values.Contains(false);
         }
 
-        private static Dictionary<string, bool> GetInstalledModules()
+        internal static Dictionary<string, bool> GetInstalledModules()
         {
             // Each target is asked about with its OWN group. The previous version looped over every
             // BuildTargetGroup and ASSIGNED inside the loop, so all three entries ended up holding
@@ -874,7 +891,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 bool trovato = false;
                 foreach (var package in _listRequest.Result)
                 {
-                    if (package.name == "com.code-philosophy.hybridclr")
+                    if (package.name == hybridclr_package_name)
                     {
                         trovato = true;
                         break;
@@ -900,55 +917,148 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         /// </summary>
         private void CheckHybridCLRAssembly()
         {
+            // Lowered first, as before the check moved into IsInterpreterReady: if the setupper
+            // throws, the row must not keep showing an earlier "ready".
             projectConfig.HybridCLRAssemblyReady = false;
+            projectConfig.HybridCLRAssemblyReady = IsInterpreterReady(packageManagerConfig != null ? packageManagerConfig.CurrentVersion : null, out string issue);
+            // Shown verbatim under the checks: the icon says "not ready", this says what to fix.
+            projectConfig.InterpreterIssue = issue ?? string.Empty;
+        }
+
+        /// <summary>
+        /// Whether the interpreter is ready, and if not why. <paramref name="issue"/> is null when
+        /// it is ready. In this order:
+        /// <list type="number">
+        /// <item>the project asks for the HybridCLR that <paramref name="installedEntry"/> declares
+        /// (skipped when the entry is unknown or declares none);</item>
+        /// <item>the setupper compiled;</item>
+        /// <item>the setupper's own check;</item>
+        /// <item>the interpreter in the local IL2CPP is the package's version.</item>
+        /// </list>
+        /// The first comes first because a HybridCLR of another version may not compile against
+        /// the SDK at all, and the setupper's absence would then be the wrong explanation.
+        /// </summary>
+        internal static bool IsInterpreterReady(PackageRegistry installedEntry, out string issue)
+        {
+            issue = GetInterpreterPackageIssue(installedEntry);
+            if (issue != null)
+                return false;
 
             Type setupperType = FindSetupperType();
             if (setupperType == null)
             {
                 // HybridCLR not installed: the setupper's assembly does not exist yet, so the
                 // package row above is the one that explains it.
-                projectConfig.InterpreterIssue = "The interpreter package is not installed yet.";
-                return;
+                issue = "The interpreter package is not installed yet.";
+                return false;
             }
 
             MethodInfo getIssue = setupperType.GetMethod("GetSetupIssue", BindingFlags.Public | BindingFlags.Static);
             if (getIssue == null)
             {
-                projectConfig.InterpreterIssue =
-                    "The Virtuademy-SDK-Environments package is older than this setup window (HotUpdateSetupper.GetSetupIssue is missing).";
-                UnityEngine.Debug.LogWarning("[Setup] " + projectConfig.InterpreterIssue);
-                return;
+                issue = "The Virtuademy-SDK-Environments package is older than this setup window (HotUpdateSetupper.GetSetupIssue is missing).";
+                UnityEngine.Debug.LogWarning("[Setup] " + issue);
+                return false;
             }
 
-            string issue = getIssue.Invoke(null, null) as string;
+            issue = getIssue.Invoke(null, null) as string;
+            if (issue != null)
+                return false;
 
-            projectConfig.HybridCLRAssemblyReady = issue == null;
-            // Shown verbatim under the checks: the icon says "not ready", this says what to fix.
-            projectConfig.InterpreterIssue = issue ?? string.Empty;
+            // Optional: Virtuademy-SDK-Environments versions before it only check that an
+            // interpreter is installed, not which one.
+            MethodInfo getVersionIssue = setupperType.GetMethod("GetInterpreterVersionIssue", BindingFlags.Public | BindingFlags.Static);
+            issue = getVersionIssue?.Invoke(null, null) as string;
+            return issue == null;
+        }
+
+        /// <summary>The manifest value the version's interpreter is installed with.</summary>
+        internal static string InterpreterReference(PackageDefinition interpreter) => $"{interpreter.Url}#{interpreter.Version}";
+
+        /// <summary>
+        /// The HybridCLR <paramref name="entry"/> declares. <paramref name="declared"/> is null when
+        /// the entry is unknown or declares none. Returns false, with the error logged, when the
+        /// declaration is malformed: the registry is edited by hand, and a missing url or version,
+        /// or another package name, would write a broken or second manifest line.
+        /// </summary>
+        internal static bool TryGetDeclaredInterpreter(PackageRegistry entry, out PackageDefinition declared)
+        {
+            declared = entry?.Interpreter;
+            if (declared == null)
+                return true;
+
+            if (declared.Name == hybridclr_package_name && !string.IsNullOrWhiteSpace(declared.Url) && !string.IsNullOrWhiteSpace(declared.Version))
+                return true;
+
+            // Once per entry per domain: every check asks, and the same error repeated says nothing new.
+            if (malformed_interpreter_logged.Add(entry.ReflectisVersion))
+            {
+                UnityEngine.Debug.LogError($"[Setup] Registry entry '{entry.ReflectisVersion}' has a malformed \"interpreter\": it needs " +
+                                           $"the name \"{hybridclr_package_name}\", a url and a version. It is ignored until the registry is fixed.");
+            }
+            declared = null;
+            return false;
+        }
+
+        private static readonly HashSet<string> malformed_interpreter_logged = new();
+
+        /// <summary>
+        /// Why the HybridCLR the project asks for is not the one <paramref name="entry"/> declares,
+        /// or null when it is, when the project has no HybridCLR, or when the entry is unknown or
+        /// declares no (valid) interpreter.
+        /// </summary>
+        internal static string GetInterpreterPackageIssue(PackageRegistry entry)
+        {
+            TryGetDeclaredInterpreter(entry, out PackageDefinition declared);
+            string inManifest = ReadManifestDependency(hybridclr_package_name);
+            if (declared == null || inManifest == null)
+                return null;
+
+            string wanted = InterpreterReference(declared);
+            return inManifest == wanted
+                ? null
+                : $"HybridCLR is {inManifest}, but Virtuademy {entry.ReflectisVersion} uses {wanted}. Fix switches to it.";
+        }
+
+        /// <summary>The value <paramref name="packageName"/> has in Packages/manifest.json, or null
+        /// when the project does not ask for it.</summary>
+        internal static string ReadManifestDependency(string packageName)
+        {
+            string manifestFilePath = Path.Combine(Application.dataPath, "../Packages/manifest.json");
+            JObject manifestObj = JObject.Parse(File.ReadAllText(manifestFilePath));
+            return (string)manifestObj["dependencies"]?[packageName];
         }
 
         private bool GetURPConfigurationStatus() => IsRenderPipelineConfigured(renderPipelineAsset);
 
-        private static bool IsRenderPipelineConfigured(RenderPipelineAsset asset)
+        internal static bool IsRenderPipelineConfigured(RenderPipelineAsset asset)
         {
             return asset != null && GraphicsSettings.defaultRenderPipeline == asset && QualitySettings.renderPipeline == asset;
         }
 
-        private static bool GetProjectSettingsStatus()
+        internal static bool GetProjectSettingsStatus()
         {
             return PlayerSettings.GetApiCompatibilityLevel(NamedBuildTarget.Standalone) == ApiCompatibilityLevel.NET_Unity_4_8;
         }
 
-        private static bool GetMaxTextureSizeOverride()
+        internal static bool GetMaxTextureSizeOverride()
         {
             return EditorUserBuildSettings.overrideMaxTextureSize == 1024;
         }
 
         private void ConfigureProjectSettings()
         {
+            ApplyProjectSettings(renderPipelineAsset);
+            CheckProjectSettings();
+        }
+
+        /// <summary>What the Configure button applies: URP, the API compatibility level and the
+        /// max texture size override.</summary>
+        internal static void ApplyProjectSettings(RenderPipelineAsset asset)
+        {
             // URP configuration
-            GraphicsSettings.defaultRenderPipeline = renderPipelineAsset;
-            QualitySettings.renderPipeline = renderPipelineAsset;
+            GraphicsSettings.defaultRenderPipeline = asset;
+            QualitySettings.renderPipeline = asset;
 
             // Project settings configuration
             PlayerSettings.SetApiCompatibilityLevel(NamedBuildTarget.Standalone, ApiCompatibilityLevel.NET_Unity_4_8);
@@ -958,12 +1068,27 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-
-            CheckProjectSettings();
         }
 
         private void ConfigureInterpreterSettings()
         {
+            // The installed version decides which HybridCLR (its registry entry's "interpreter"). An
+            // unpinned one is whatever HybridCLR released last: v9.0.0 (2026-10-08) renamed the
+            // namespaces the SDK compiles against.
+            bool declarationValid = TryGetDeclaredInterpreter(packageManagerConfig.CurrentVersion, out PackageDefinition declared);
+            string inManifest = ReadManifestDependency(hybridclr_package_name);
+
+            // Another HybridCLR is switched first. The setup runs after the reload, once the right
+            // package has compiled; it also reinstalls the local IL2CPP for the new version.
+            if (declared != null && inManifest != null && inManifest != InterpreterReference(declared))
+            {
+                SessionState.SetBool(pending_hybridclr_setup_key, true);
+                InstallPackages(new() { declared });
+                UnityEngine.Debug.Log($"[Setup] HybridCLR switched from {inManifest} to {InterpreterReference(declared)}. The interpreter is configured after the recompilation.");
+                Client.Resolve();
+                return;
+            }
+
             // Ground truth for "HybridCLR is usable" is the setupper type itself: it only exists
             // once the package is installed AND the assembly gated behind HYBRIDCLR_INSTALLED has
             // compiled. Branching on IsHybridCLRInstalled instead would race with the async
@@ -986,11 +1111,27 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return;
             }
 
+            // HybridCLR has to be added, and only the version's own can be. Without a declaration
+            // the steps above still run for a project that has HybridCLR already.
+            if (declared == null)
+            {
+                if (declarationValid)
+                {
+                    UnityEngine.Debug.LogError(packageManagerConfig.CurrentVersion == null
+                        ? $"[Setup] Virtuademy {packageManagerConfig.CurrentInstallationVersion} is not in the package registry, " +
+                          "so the HybridCLR that goes with it is unknown. Update to a listed version first."
+                        : $"[Setup] Virtuademy {packageManagerConfig.CurrentInstallationVersion} declares no interpreter in the " +
+                          "package registry, so no HybridCLR is known to work with it. Versions before 2026.6 have no " +
+                          "interpreter; a later version without one is missing its \"interpreter\" entry in the registry.");
+                }
+                return;
+            }
+
             // The setupper's assembly does not exist yet, so it cannot be called here: raise the
             // flag and let it pick the job up on the domain reload that follows the import.
             SessionState.SetBool(pending_hybridclr_setup_key, true);
 
-            _addRequest = Client.Add(hybridclr_package_url);
+            _addRequest = Client.Add(InterpreterReference(declared));
             EditorApplication.update += OnAddProgress;
         }
 
@@ -1011,7 +1152,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             UnityEngine.Debug.LogError($"[Setup] Install failed: {_addRequest.Error?.message}");
         }
 
-        private void InvokeSetupperViaReflection()
+        internal static void InvokeSetupperViaReflection()
         {
             Type setupperType = FindSetupperType();
             if (setupperType == null)
@@ -1025,7 +1166,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         /// <summary>The setupper ships with the Virtuademy-SDK-Environments package but only
         /// compiles once HybridCLR is installed, so it can only be reached by reflection.</summary>
-        private static Type FindSetupperType()
+        internal static Type FindSetupperType()
             => AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
                 .FirstOrDefault(t => t.Name == "HotUpdateSetupper");
@@ -1036,22 +1177,33 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private void InstallPackageWithDependencies(PackageDefinition package)
         {
-            string[] dependenciesToInstall = packageManagerConfig.SelectedVersion.FullDependencies[package.Name];
+            AddPackageWithDependencies(packageManagerConfig, package);
 
-            foreach (var dependency in dependenciesToInstall.Select(x => packageManagerConfig.SelectedVersionPackageDictionary[x]).Append(package))
+            Client.Resolve();
+        }
+
+        /// <summary>
+        /// Records <paramref name="package"/> and its dependencies of the selected version as
+        /// installed and writes them into the manifest. The packages arrive with the next
+        /// resolve, which the caller starts (the window) or leaves to the next editor launch
+        /// (<see cref="SetupCli"/>).
+        /// </summary>
+        internal static void AddPackageWithDependencies(PackageManagerConfiguration config, PackageDefinition package)
+        {
+            string[] dependenciesToInstall = config.SelectedVersion.FullDependencies[package.Name];
+
+            foreach (var dependency in dependenciesToInstall.Select(x => config.SelectedVersionPackageDictionary[x]).Append(package))
             {
-                if (!packageManagerConfig.InstalledPackages.Contains(dependency))
+                if (!config.InstalledPackages.Contains(dependency))
                 {
-                    packageManagerConfig.InstalledPackages.Add(dependency);
+                    config.InstalledPackages.Add(dependency);
                 }
             }
 
-            EditorUtility.SetDirty(packageManagerConfig);
-            AssetDatabase.SaveAssetIfDirty(packageManagerConfig);
+            EditorUtility.SetDirty(config);
+            AssetDatabase.SaveAssetIfDirty(config);
 
-            InstallPackages(dependenciesToInstall.Append(package.Name).Select(x => packageManagerConfig.SelectedVersionPackageDictionary[x]).ToList());
-
-            Client.Resolve();
+            InstallPackages(dependenciesToInstall.Append(package.Name).Select(x => config.SelectedVersionPackageDictionary[x]).ToList());
         }
 
         /// <summary>
@@ -1108,7 +1260,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             Client.Resolve();
         }
 
-        private void InstallPackages(List<PackageDefinition> toInstall)
+        internal static void InstallPackages(List<PackageDefinition> toInstall)
         {
             string manifestFilePath = Path.Combine(Application.dataPath, "../Packages/manifest.json");
             string manifestJson = File.ReadAllText(manifestFilePath);
@@ -1149,7 +1301,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             Client.Resolve();
         }
 
-        private void UninstallPackages(List<string> toRemove)
+        internal static void UninstallPackages(List<string> toRemove)
         {
             string manifestFilePath = Path.Combine(Application.dataPath, "../Packages/manifest.json");
             string manifestJson = File.ReadAllText(manifestFilePath);
@@ -1318,6 +1470,14 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                     }
                 }
 
+                // HybridCLR follows the version too. It is not one of "our" packages, so the loops
+                // above do not see it. When it moves, the setup reinstalls the interpreter for the
+                // new version after the resolve below.
+                if (AlignInterpreterWithVersion(packageManagerConfig.SelectedVersion, removedPackages))
+                {
+                    SessionState.SetBool(pending_hybridclr_setup_key, true);
+                }
+
                 // One dialog for all of them. It used to be one per package, each overwriting the
                 // last in the same popup and adding its own handler to the same button.
                 if (removedPackages.Count > 0)
@@ -1337,6 +1497,42 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 Client.Resolve();
                 await LoadData();
             }
+        }
+
+        /// <summary>
+        /// Moves the project's HybridCLR along with a version update:
+        /// <list type="bullet">
+        /// <item>to the target's interpreter, when the target declares another one;</item>
+        /// <item>out of the project, when the target declares none (a version before 2026.6),
+        /// adding it to <paramref name="removedPackages"/>.</item>
+        /// </list>
+        /// A project without HybridCLR stays without it: the interpreter is optional. Returns true
+        /// when HybridCLR moved, so the interpreter has to be configured again after the resolve.
+        /// </summary>
+        internal static bool AlignInterpreterWithVersion(PackageRegistry target, List<string> removedPackages)
+        {
+            string inManifest = ReadManifestDependency(hybridclr_package_name);
+            if (inManifest == null)
+                return false;
+
+            // A malformed declaration leaves HybridCLR where it is: removing it, as for "none",
+            // would punish the project for a typo in the registry.
+            if (!TryGetDeclaredInterpreter(target, out PackageDefinition declared))
+                return false;
+
+            if (declared == null)
+            {
+                UninstallPackages(new() { hybridclr_package_name });
+                removedPackages.Add(hybridclr_package_name);
+                return false;
+            }
+
+            if (inManifest == InterpreterReference(declared))
+                return false;
+
+            InstallPackages(new() { declared });
+            UnityEngine.Debug.Log($"[Setup] HybridCLR moved from {inManifest} to {InterpreterReference(declared)} with the version.");
+            return true;
         }
 
         private async void ResolveBreakingChanges()
@@ -1456,7 +1652,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             dialog.style.display = DisplayStyle.Flex;
         }
 
-        private void EnsureFolderExists(string folderPath)
+        private static void EnsureFolderExists(string folderPath)
         {
             string[] folders = folderPath.Split('/');
             string currentPath = "";
