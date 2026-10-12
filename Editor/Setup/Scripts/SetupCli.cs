@@ -314,7 +314,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return ExitDone;
             }
 
-            List<string> ours = RegisteredPackagesOfOurs();
+            List<string> ours = RegisteredPackagesOfOurs(registry);
             if (inManifest != null || ours.Count > 0)
             {
                 string found = inManifest != null
@@ -534,10 +534,12 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         private static bool IsRegistered(string packageName)
             => UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().Any(package => package.name == packageName);
 
-        private static List<string> RegisteredPackagesOfOurs()
+        // Managed packages only, as the window counts them: a package of ours that no registry entry
+        // lists (one a creator added by hand) does not make the project "already installed".
+        private static List<string> RegisteredPackagesOfOurs(PackageRegistry[] registry)
             => UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages()
                 .Select(package => package.name)
-                .Where(name => CreatorKitSetupWindow.IsOurPackage(name) && !CreatorKitSetupWindow.packages_to_exclude.Contains(name))
+                .Where(name => CreatorKitSetupWindow.IsManagedPackage(name, registry) && !CreatorKitSetupWindow.packages_to_exclude.Contains(name))
                 .ToList();
 
         private static int NextInterpreterAttempt()

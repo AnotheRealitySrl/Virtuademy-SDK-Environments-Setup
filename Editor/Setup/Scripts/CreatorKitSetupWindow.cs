@@ -88,6 +88,9 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         // is what the pieces carrying no platform are called — SPACS-Utility first, on
         // 2026-09-10.
         //
+        // The prefix is the first of two conditions: IsManagedPackage also requires the id to be in
+        // the registry, so a package of ours that no version lists is left alone.
+        //
         // Missing one is not a cosmetic bug. Everything below reasons about "our" packages
         // through this list: with only the old prefix, GetInstalledPackages matched nothing in a
         // renamed project and the window went blind to the very packages it had just installed,
@@ -116,6 +119,23 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         // HybridCLR's URL and version are not here: each registry entry declares the one its
         // release runs (PackageRegistry.Interpreter). The name finds it in a project.
         internal const string hybridclr_package_name = "com.code-philosophy.hybridclr";
+
+        // The packages this window manages: one of our prefixes AND listed by at least one entry of
+        // the registry. The prefix alone is not enough. Creators add packages of ours that no
+        // registry entry has ever listed (Virtuademy-Avatars, for one), and a prefix-only test
+        // put them in InstalledPackages, so the next update uninstalled them as "not part of the
+        // selected version". Every entry counts, not only the installed and the selected one: an id
+        // a past version shipped under (reflectis-*) is still ours to move or remove.
+        //
+        // The prefix stays as a second condition so nothing outside it becomes managed: HybridCLR
+        // is in the registry too, and its version is handled by the HybridCLR setup, not here.
+        internal static bool IsManagedPackage(string packageName, IEnumerable<PackageRegistry> registry)
+            => IsOurPackage(packageName)
+               && registry.Any(entry =>
+                      entry.Packages != null && entry.Packages.Any(package => package.Name == packageName));
+
+        private bool IsManagedPackage(string packageName)
+            => IsManagedPackage(packageName, packageManagerConfig.AllVersionsPackageRegistry);
 
         // Must stay in sync with HotUpdateSetupper.PENDING_SETUP_KEY: the setupper lives in another
         // package and this assembly cannot reference it, so the key is duplicated on purpose.
@@ -1238,7 +1258,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             List<string> unpinned = new();
             foreach (JProperty entry in dependencies.Properties().ToList())
             {
-                if (!IsOurPackage(entry.Name) || (string)entry.Value["source"] != "git")
+                if (!IsManagedPackage(entry.Name) || (string)entry.Value["source"] != "git")
                 {
                     continue;
                 }
@@ -1319,6 +1339,20 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private async void GetInstalledPackages()
         {
+            // The list is saved in the project, so it can still hold packages an earlier version of
+            // this window added on the prefix alone. Dropped from the list only, never uninstalled:
+            // the window does not manage them, and the update would otherwise remove them.
+            List<string> unmanaged = packageManagerConfig.InstalledPackages
+                .Where(package => !IsManagedPackage(package.Name))
+                .Select(package => package.Name)
+                .ToList();
+            if (unmanaged.Count > 0)
+            {
+                packageManagerConfig.InstalledPackages.RemoveAll(package => unmanaged.Contains(package.Name));
+                UnityEngine.Debug.Log("[Setup] Not listed by any Virtuademy version, left as they are:\n  " +
+                                      string.Join("\n  ", unmanaged));
+            }
+
             // offlineMode, because the question is local: what did this project resolve. Answering
             // it used to require the registry, which made a local question fail whenever the
             // network did. Everything read below — name, version, source — is available offline.
@@ -1345,7 +1379,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             foreach (var package in listRequest.Result)
             {
-                if (IsOurPackage(package.name) && !packages_to_exclude.Contains(package.name))
+                if (IsManagedPackage(package.name) && !packages_to_exclude.Contains(package.name))
                 {
                     PackageDefinition installedPackage = new()
                     {

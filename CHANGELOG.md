@@ -62,6 +62,13 @@ platform version is published (see the README's Known issues).
 - **Install interpreter no longer installs whatever HybridCLR released last.** It used to add
   HybridCLR's git URL without a ref. HybridCLR v9.0.0 (2026-10-08) renamed the namespaces the SDK
   compiles against, so every new install from that day failed to compile.
+- **Only packages the registry lists are managed.** A package counted as the installer's when its
+  id started with one of our prefixes (`virtuademy`, `reflectis`, `spacs`), so a package of ours
+  that creators add by hand and no registry entry lists (`Virtuademy-Avatars`) was uninstalled by
+  the next update as "not part of the selected version", and unpinned by Re-resolve. A package
+  now needs the prefix **and** an id listed by at least one registry entry. Entries an earlier
+  window saved on the prefix alone are dropped from the installed list, with a Console line, and
+  are not uninstalled.
 - The editor-modules check includes **iOS** build support. Interpreted scripts are compiled for
   iOS too, so without the module the setup looked complete and every build of a project with
   scripts stopped at "No DLL was produced for: iOS". Every project is now asked for it, scripts or not.
