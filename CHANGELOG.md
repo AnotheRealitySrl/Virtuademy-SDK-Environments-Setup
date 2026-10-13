@@ -2,10 +2,10 @@
 
 All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
 
-## v2.0.0 — on `develop`, not released yet
+## v2.0.0
 
-Everything since `v1.0.1`. `main` and the latest tag stay on the 1.x installer until the 2026.6
-platform version is published (see the README's Known issues).
+Everything since `v1.0.1`. Released with platform 2026.6.0, the first registry version whose
+update routine moves a 1.x project to this installer's id.
 
 ### Breaking
 

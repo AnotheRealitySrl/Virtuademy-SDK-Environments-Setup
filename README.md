@@ -378,9 +378,3 @@ To test a registry change without touching the blob, point an entry at a branch 
   `Virtuademy-SDK-Environments`) first: it rewrites the key and the URL and unpins this project's
   own git packages in `packages-lock.json`, so UPM resolves them again. The old id stays in the
   self-exclusion list of `CreatorKitSetupWindow` for projects that have not migrated yet.
-- **2.0.0 is on `develop`, not released.** `main` — the branch a creator gets from the bare git
-  URL — is still the 1.x installer under the old id, and the latest tag is `v1.0.1`. The release
-  waits for **the 2026.6 platform version in the registry**: moving `main` to the new id leaves a
-  1.x project that re-resolves the installer unresolvable until it runs
-  `Virtuademy ▸ Update routines ▸ v2026.5 -> v2026.6`, which arrives with the 2026.6 package set.
-  Then merge `develop` into `main`, tag `v2.0.0` on `main`.
