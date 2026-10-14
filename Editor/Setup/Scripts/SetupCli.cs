@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
 
 using UnityEditor;
@@ -16,13 +17,15 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     /// <summary>
     /// Runs what <b>Virtuademy ▸ Setup project</b> does, from the command line, for a machine with
-    /// nobody at the window: a fresh clone, CI, the Env-Test harness. Three steps, the window's own:
-    /// <c>configure</c> (the Configure button), <c>sdk</c> (Install next to Virtuademy SDK
-    /// Environments, at a given registry version) and <c>interpreter</c> (Install interpreter).
+    /// nobody at the window: a fresh clone, CI, the Env-Test harness. Four steps: three are the
+    /// window's own, <c>configure</c> (the Configure button), <c>sdk</c> (Install next to Virtuademy
+    /// SDK Environments, at a given registry version) and <c>interpreter</c> (Install interpreter),
+    /// and <c>addressables</c> does what the Addressables management window's "Fix Addressables
+    /// configurations" button does.
     /// <code>
     /// Unity -batchmode -nographics -projectPath &lt;project&gt; -logFile -
     ///       -executeMethod Virtuademy.SDK.Environments.Setup.Editor.SetupCli.Run
-    ///       -vdSetupVersion develop [-vdSetupSteps configure,sdk,interpreter]
+    ///       -vdSetupVersion develop [-vdSetupSteps configure,sdk,interpreter,addressables]
     ///       [-vdSetupRegistry &lt;url or file&gt;]
     /// </code>
     /// <para>
@@ -33,18 +36,31 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
     /// registry change before it is published.
     /// </para>
     /// <para>
+    /// The <c>addressables</c> step calls <c>AddressablesConfiguration.Apply()</c> of
+    /// Virtuademy-SDK-Environments, by reflection like the interpreter's setupper, since this
+    /// package installs the SDK and cannot reference it; an SDK version that predates the class
+    /// is skipped with a warning, so the default steps still install it. A project that is not
+    /// configured gets the SDK's profile and its <b>Addressables groups reset to the single
+    /// default group</b>: every other group and every entry are removed, as the window's button
+    /// does. A configured project is left as it is. Without it, the first "Build &amp; Deploy"
+    /// would build every platform for minutes and fail at the end, with the bundles in
+    /// <c>Library</c> instead of <c>ServerData</c>.
+    /// </para>
+    /// <para>
     /// <b>One launch does one round, not the whole setup.</b> Every package change ends in a
     /// resolve and a domain reload, and a reload cuts short the method that is running. So a launch
     /// applies what it can, stops right after the first change that needs the editor to start
     /// again, and exits with <see cref="ExitRelaunch"/>; the caller launches again until the code
     /// is <see cref="ExitDone"/>. A new project takes three launches: Configure and the SDK
-    /// packages, then HybridCLR, then the interpreter (a fourth when the interpreter setup needs a
-    /// recompilation first). Every step is idempotent, so a project that is already set up costs
-    /// one launch and is left as it is.
+    /// packages, then HybridCLR, then the interpreter and the Addressables configuration (a
+    /// fourth when the interpreter setup needs a recompilation first). Every step is idempotent,
+    /// so a project that is already set up costs one launch and is left as it is.
     /// </para>
     /// <para>
     /// <c>-vdSetupSteps check</c> changes nothing: it reports and exits with <see cref="ExitDone"/>
-    /// when the project is set up, <see cref="ExitNotReady"/> otherwise.
+    /// when the project is set up, <see cref="ExitNotReady"/> otherwise. The Addressables
+    /// configuration counts once the SDK is installed (<c>addressablesConfigured</c> in the report
+    /// is null before that).
     /// </para>
     /// <para>
     /// The method exits the editor itself, with one of the codes below, so <c>-quit</c> is not
@@ -77,6 +93,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         public const int ExitSdkMissing = 16;
         public const int ExitInterpreterFailed = 17;
         public const int ExitProjectSettingsFailed = 18;
+        public const int ExitAddressablesFailed = 19;
 
         private const string log_prefix = "[SetupCli] ";
 
@@ -87,13 +104,19 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         // Library/ is per machine and never committed.
         private const string interpreter_attempts_file = "Library/VirtuademySetupCli.interpreter-attempts";
 
-        private enum Step { Configure, Sdk, Interpreter, Check }
+        // Where the SDK keeps the Addressables configuration. Named, not referenced: this package
+        // installs the SDK, so it cannot compile against it.
+        private const string addressables_configuration_assembly = "Virtuademy.SDK.Environments.Editor";
+        private const string addressables_configuration_type = addressables_configuration_assembly + ".AddressablesConfiguration";
+
+        private enum Step { Configure, Sdk, Interpreter, Addressables, Check }
 
         private static readonly Dictionary<string, Step> step_names = new()
         {
             { "configure", Step.Configure },
             { "sdk", Step.Sdk },
             { "interpreter", Step.Interpreter },
+            { "addressables", Step.Addressables },
             { "check", Step.Check },
         };
 
@@ -167,6 +190,8 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 result = InstallSdk(version);
             if (result == ExitDone && steps.Contains(Step.Interpreter))
                 result = InstallInterpreter();
+            if (result == ExitDone && steps.Contains(Step.Addressables))
+                result = ConfigureAddressables();
 
             // Informational after the steps: a report that throws must not replace their result.
             try
@@ -183,7 +208,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private static bool TryParseArguments(string[] args, out HashSet<Step> steps, out string version, out string error)
         {
-            steps = new HashSet<Step> { Step.Configure, Step.Sdk, Step.Interpreter };
+            steps = new HashSet<Step> { Step.Configure, Step.Sdk, Step.Interpreter, Step.Addressables };
             version = GetArgument(args, "-vdSetupVersion");
             error = null;
 
@@ -436,9 +461,86 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             return ExitRelaunch;
         }
 
+        private static int ConfigureAddressables()
+        {
+            if (!IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name))
+            {
+                Debug.LogError(log_prefix + "addressables: Virtuademy-SDK-Environments is not installed, and the Addressables " +
+                               "configuration ships with it. Run the sdk step first.");
+                return ExitSdkMissing;
+            }
+
+            Type configuration = FindAddressablesConfigurationType();
+            if (configuration == null)
+            {
+                if (EditorUtility.scriptCompilationFailed)
+                {
+                    Debug.LogError(log_prefix + "addressables: Virtuademy-SDK-Environments is installed but its editor assembly " +
+                                   "did not compile. Look for compilation errors earlier in the log.");
+                    return ExitSdkMissing;
+                }
+
+                // A registry version older than the class: the default steps must keep installing it.
+                Debug.LogWarning(log_prefix + "addressables: this Virtuademy-SDK-Environments has no AddressablesConfiguration " +
+                                 "(it predates it), so there is nothing to apply. Use its Addressables management window.");
+                return ExitDone;
+            }
+
+            try
+            {
+                if (ReadAddressablesConfigured(configuration) == true)
+                {
+                    Debug.Log(log_prefix + "addressables: already configured.");
+                    return ExitDone;
+                }
+
+                // The same reset the window's Fix Addressables configurations button does.
+                Debug.Log(log_prefix + "addressables: applying the SDK's Addressables profile and resetting the Addressables " +
+                          "groups to the single default group (every other group and every entry is removed).");
+                configuration.GetMethod("Apply", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
+
+                if (ReadAddressablesConfigured(configuration) != true)
+                {
+                    Debug.LogError(log_prefix + "addressables: the configuration was applied, but the checks still fail.");
+                    return ExitAddressablesFailed;
+                }
+            }
+            catch (TargetInvocationException ex)
+            {
+                Debug.LogError(log_prefix + "addressables: " + (ex.InnerException ?? ex));
+                return ExitAddressablesFailed;
+            }
+
+            Debug.Log(log_prefix + "addressables: configured.");
+            return ExitDone;
+        }
+
         #endregion
 
         #region Helpers
+
+        /// <summary>
+        /// The SDK's <c>AddressablesConfiguration</c>, which only exists once the package has
+        /// resolved and compiled, so it can only be reached by reflection. Null before that.
+        /// </summary>
+        private static Type FindAddressablesConfigurationType()
+            => AppDomain.CurrentDomain.GetAssemblies()
+                .Where(assembly => assembly.GetName().Name == addressables_configuration_assembly)
+                .Select(assembly => assembly.GetType(addressables_configuration_type, false))
+                .FirstOrDefault(type => type != null);
+
+        /// <summary>
+        /// Whether the project's Addressables are configured as the SDK expects; null when the SDK's
+        /// <c>AddressablesConfiguration</c> is not there to ask. Does not change anything.
+        /// </summary>
+        private static bool? ReadAddressablesConfigured(Type configuration = null)
+        {
+            configuration ??= FindAddressablesConfigurationType();
+            if (configuration == null)
+                return null;
+
+            return (bool?)configuration.GetProperty("IsConfigured", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+        }
 
         private static bool ProjectSettingsConfigured(RenderPipelineAsset asset)
             => CreatorKitSetupWindow.IsRenderPipelineConfigured(asset)
@@ -586,6 +688,10 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 entry = registryRead ? registry.FirstOrDefault(candidate => candidate.ReflectisVersion == recorded) : null;
             }
 
+            // Null while the SDK is not there to ask: its own row says so, and this one does not
+            // fail the check a second time.
+            bool? addressablesConfigured = ReadAddressablesConfigured();
+
             bool interpreterReady = CreatorKitSetupWindow.IsInterpreterReady(entry, out string interpreterIssue);
             CreatorKitSetupWindow.TryGetDeclaredInterpreter(entry, out PackageDefinition declared);
             if (hybridClr && declared == null)
@@ -609,6 +715,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 hybridClrVersionChecked = declared != null,
                 interpreterReady,
                 interpreterIssue,
+                addressablesConfigured,
             };
             Debug.Log(log_prefix + "REPORT " + JsonConvert.SerializeObject(report));
 
@@ -617,7 +724,8 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                    && report.maxTextureSize1024
                    && report.sdkEnvironments
                    && report.scriptsCompile
-                   && (!hybridClr || interpreterReady);
+                   && (!hybridClr || interpreterReady)
+                   && addressablesConfigured != false;
         }
 
         private static string Describe(int code) => code switch
@@ -635,6 +743,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             ExitSdkMissing => "Virtuademy-SDK-Environments missing",
             ExitInterpreterFailed => "interpreter setup failed",
             ExitProjectSettingsFailed => "project settings failed",
+            ExitAddressablesFailed => "addressables configuration failed",
             _ => "unknown",
         };
 

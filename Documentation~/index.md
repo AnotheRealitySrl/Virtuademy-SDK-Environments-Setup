@@ -121,7 +121,9 @@ computer is reinstalled for the new HybridCLR after Unity recompiles.
 ### From the command line
 
 **Configure**, **Install** of Virtuademy SDK Environments and **Install interpreter** also run
-without the window, for a build machine or a fresh clone. Close the editor first, then run:
+without the window, for a build machine or a fresh clone, and so does the Addressables
+configuration that the SDK's Addressables management window applies with **Fix Addressables
+configurations**. Close the editor first, then run:
 
 ```
 Unity -batchmode -nographics -projectPath <your project> -logFile -
@@ -131,7 +133,10 @@ Unity -batchmode -nographics -projectPath <your project> -logFile -
 
 `<version>` is a version as the window's list shows it, for example `2026.6.0`, or `develop` for
 the pre-release. The command has to be run again until it exits with `0`. Exit code `2` means "the
-project changed, run again", and a new project takes three runs. Any other code is an error, named
+project changed, run again", and a new project takes three runs. The last run also configures
+Addressables: it gives the project the SDK's Addressables profile and resets the Addressables
+groups to the single default group, removing every other group and every entry, as the window's
+button does. A project that is already configured is left as it is. Any other code is an error, named
 in the log. On a fresh clone of a project that is already set up, the same command skips the
 packages, which arrive with the clone. It redoes the two things stored per machine: the max
 texture size override and the interpreter inside the local IL2CPP. `-vdSetupSteps check` changes
@@ -154,6 +159,9 @@ selected version** in the window.
   resolution is on.
 - Project settings, only when you press **Configure** or **Install interpreter**, or run them from
   the command line.
+- `Assets/AddressableAssetsData/`, only from the command line (the `addressables` step): the
+  Addressables settings, profile and default group. The window of Virtuademy-SDK-Environments
+  writes the same files when you press **Fix Addressables configurations**.
 
 ## Troubleshooting
 

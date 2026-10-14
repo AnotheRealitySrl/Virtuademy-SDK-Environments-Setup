@@ -86,12 +86,13 @@ the SDK compiles against.
 
 `SetupCli.Run` does what three of the window's buttons do, in batch mode: **Configure**
 (`configure`), **Install** next to Virtuademy SDK Environments at a registry version (`sdk`), and
-**Install interpreter** (`interpreter`).
+**Install interpreter** (`interpreter`). A fourth step, `addressables`, does what the
+**Fix Addressables configurations** button of the SDK's Addressables management window does.
 
 ```
 Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerErrors
       -executeMethod Virtuademy.SDK.Environments.Setup.Editor.SetupCli.Run
-      -vdSetupVersion develop [-vdSetupSteps configure,sdk,interpreter | check]
+      -vdSetupVersion develop [-vdSetupSteps configure,sdk,interpreter,addressables | check]
       [-vdSetupRegistry <url or file>]
 ```
 
@@ -103,13 +104,23 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
   2. the entry's HybridCLR (`interpreter`), written to the manifest, after the SDK packages
      resolve (about 90 s);
   3. the interpreter, through `HotUpdateSetupper.Setup`, which clones hybridclr and il2cpp_plus
-     (about 40 s).
+     (about 40 s), and then the Addressables configuration, in the same launch.
 
   A fourth launch is needed only when the interpreter setup is not ready until a recompilation.
 - **The interpreter step follows the registry.** It installs the HybridCLR that the project's
   recorded version declares. When the manifest asks for another one it switches to it, which is a
   repair rather than a version update; exit `2`. When the local IL2CPP holds another libil2cpp,
   the setup reinstalls it.
+- **The `addressables` step** calls `AddressablesConfiguration.Apply()` of
+  Virtuademy-SDK-Environments, by reflection, as the interpreter step reaches `HotUpdateSetupper`:
+  this package installs the SDK, so it cannot compile against it. It runs after `interpreter` and
+  needs the SDK resolved (exit `16` when it is not). A project that is not configured gets the
+  SDK's Addressables profile and its groups **reset to the single default group**: every other
+  group and every entry is removed, as the window's button does. A configured project is left as
+  it is. Without it a new project keeps Unity's default profile and groups, and the first
+  "Build & Deploy" builds every platform for minutes and fails at the end. An SDK version that
+  predates `AddressablesConfiguration` is skipped with a warning (exit `0`); one whose editor
+  assembly did not compile exits `16`.
 - **`-ignoreCompilerErrors`** lets Unity run the method on a project that does not compile, for
   example one that pulled HybridCLR 9.0.0, so the step can repair it. Measured: two launches, from
   24 compile errors to `0`. Without the flag, Unity aborts before `-executeMethod` (exit `1`). The
@@ -148,7 +159,10 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
   - the interpreter is ready, counted as the window counts it: optional, but required once
     HybridCLR is installed. That includes the HybridCLR the recorded version declares, so with
     HybridCLR installed `check` reads the registry. The report's `hybridClrVersionChecked` is
-    false when it could not.
+    false when it could not;
+  - the Addressables are configured: the report's `addressablesConfigured` is `false`. It is `null`
+    when the SDK has no `AddressablesConfiguration` to ask (not installed yet, or older than the
+    class), and `null` does not fail the check.
 - The method exits the editor itself, so `-quit` is not needed. Every launch ends with a
   `[SetupCli] REPORT` line (one JSON object with every check) and `[SetupCli] EXIT <code>`.
 - **Exit `1` without those two lines is Unity's own failure, not SetupCli's.** It happens when the
@@ -167,9 +181,10 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
 | `13` | Registry unreadable or empty, it no longer lists the project's recorded version, or its `interpreter` is malformed |
 | `14` | The editor is not the entry's `requiredUnityVersion` |
 | `15` | Another Virtuademy version is installed |
-| `16` | Virtuademy-SDK-Environments missing or not resolved, or the project records no version |
+| `16` | Virtuademy-SDK-Environments missing, not resolved or not compiled, or the project records no version |
 | `17` | Interpreter setup failed: the entry declares no `interpreter`, HybridCLR did not resolve or compile, or three configurations did not make it ready |
 | `18` | Project settings could not be applied |
+| `19` | The `addressables` step failed: `AddressablesConfiguration.Apply()` threw, or the project did not end configured |
 
 `Virtuademy-Env-Test` drives it with `scripts/unity.sh setup <version>`, which passes
 `-ignoreCompilerErrors` and relaunches until the code is not `2`; `SETUP_REGISTRY=<file or url>`

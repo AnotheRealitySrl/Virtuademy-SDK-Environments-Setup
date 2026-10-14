@@ -2,6 +2,24 @@
 
 All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
 
+## Unreleased
+
+### Added
+
+- **`SetupCli` has an `addressables` step** (minor bump). It is part of the default steps, after
+  `interpreter`, and does what the **Fix Addressables configurations** button of the Addressables
+  management window of Virtuademy-SDK-Environments does: it calls `AddressablesConfiguration.Apply()`
+  by reflection once the SDK has compiled. A project that is not configured gets the SDK's profile
+  and its Addressables groups **reset to the single default group** (every other group and every
+  entry is removed); a configured one is left as it is. Before, a project set up entirely from the
+  command line kept Unity's default profile and groups, and its first "Build & Deploy" failed
+  after minutes of building.
+  - The `[SetupCli] REPORT` has `addressablesConfigured` (`null` when the SDK has no
+    `AddressablesConfiguration`), and `-vdSetupSteps check` exits `3` when it is `false`.
+  - New exit code `19`: the step failed.
+  - An SDK version without `AddressablesConfiguration` (10.0.0 and earlier) is skipped with a
+    warning, so installing a published version still ends with `0`.
+
 ## v2.0.0
 
 Everything since `v1.0.1`. Released with platform 2026.6.0, the first registry version whose
