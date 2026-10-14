@@ -74,8 +74,8 @@ the installer first: that commit has no editor-start update.
   - The `[SetupCli] REPORT` has `addressablesConfigured` (`null` when the SDK has no
     `AddressablesConfiguration`), and `-vdSetupSteps check` exits `3` when it is `false`.
   - New exit code `19`: the step failed.
-  - An SDK version without `AddressablesConfiguration` (10.0.0 and earlier) is skipped with a
-    warning, so installing a published version still ends with `0`.
+  - An SDK version without `AddressablesConfiguration` (every SDK-Environments before the `v10.0.0`
+    tag moved on 2026-10-14) is skipped with a warning, so installing a published version still ends with `0`.
 
 Everything since `v1.0.1`. Released with platform 2026.6.0, the first registry version whose
 update routine moves a 1.x project to this installer's id.
