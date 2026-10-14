@@ -2,11 +2,19 @@
 
 All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
 
-## Unreleased
+## v2.0.0
 
-### Added
+### Added to this release on 2026-10-14 (tag moved)
 
-- **The editor keeps the project's Virtuademy git packages current when it opens** (minor bump). Once per
+The `v2.0.0` tag was moved on 2026-10-14 onto the commit that adds the changes below. They are editor-only
+(command lines, editor windows); nothing a published world or the app loads changed. A project resolved before
+keeps the earlier commit until it re-resolves: the setup's editor-start update or `SetupCli -vdSetupSteps
+resolve` does it. Projects whose installer is still the earlier v2.0.0 commit need one manual re-resolve of
+the installer first: that commit has no editor-start update.
+
+#### Added
+
+- **The editor keeps the project's Virtuademy git packages current when it opens**. Once per
   editor session, in the editor and never in batch mode (`SetupCli`'s `resolve` step does it there), a
   background check compares, for every Virtuademy git package in `packages-lock.json`, the pinned commit with
   what the manifest's ref (tag, branch, or none) points to on the remote (`git ls-remote`, off the main thread).
@@ -23,7 +31,7 @@ All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
   an option given twice, and a stray value (`-vdSetupSteps sdk update`) now exit `10` instead of being ignored,
   which used to run the default steps nobody asked for.
 
-- **`SetupCli` has `resolve`, `update` and `vslibrary` steps** (minor bump), so the whole setup
+- **`SetupCli` has `resolve`, `update` and `vslibrary` steps**, so the whole setup
   can be driven from the command line.
   - **`resolve`** is part of the default steps, after `sdk` and before `interpreter`. For every
     Virtuademy git package in `packages-lock.json` it compares the pinned commit with what the
@@ -55,7 +63,7 @@ All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
   `CreatorKitSetupWindow.ApplyVersionUpdate`, `DropUnmanagedInstalledPackages`,
   `AddResolvedInstalledPackages`) that `SetupCli` calls too. The buttons do what they did.
 
-- **`SetupCli` has an `addressables` step** (minor bump). It is part of the default steps, after
+- **`SetupCli` has an `addressables` step**. It is part of the default steps, after
   `interpreter`, and does what the **Fix Addressables configurations** button of the Addressables
   management window of Virtuademy-SDK-Environments does: it calls `AddressablesConfiguration.Apply()`
   by reflection once the SDK has compiled. A project that is not configured gets the SDK's profile
@@ -68,8 +76,6 @@ All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
   - New exit code `19`: the step failed.
   - An SDK version without `AddressablesConfiguration` (10.0.0 and earlier) is skipped with a
     warning, so installing a published version still ends with `0`.
-
-## v2.0.0
 
 Everything since `v1.0.1`. Released with platform 2026.6.0, the first registry version whose
 update routine moves a 1.x project to this installer's id.
