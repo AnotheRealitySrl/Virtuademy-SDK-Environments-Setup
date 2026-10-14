@@ -50,6 +50,13 @@ the foot of the window. The choice is saved for this project on this machine.
 The startup check does not cover the Unity version or the interpreter: open the window to see
 those.
 
+**Packages update by themselves.** Once per editor session, when the project opens (never in a batch run),
+the editor checks the remote of each Virtuademy git package, and of this installer, in the background. If
+every remote answers and some moved (a tag was re-cut, a branch has new work), exactly those are updated and
+the Console says which, from which commit to which. If any remote cannot be reached, nothing is changed and one
+warning says so. To turn it off, clear **Update Virtuademy git packages when the project opens** at the foot
+of the window; the choice is saved for this project on this machine.
+
 The window has two sections, **Project settings** and
 **Package manager**. Work through them top to bottom: the package installs need git, and the
 packages expect the project settings below.
@@ -120,10 +127,10 @@ computer is reinstalled for the new HybridCLR after Unity recompiles.
 
 ### From the command line
 
-**Configure**, **Install** of Virtuademy SDK Environments and **Install interpreter** also run
-without the window, for a build machine or a fresh clone, and so does the Addressables
-configuration that the SDK's Addressables management window applies with **Fix Addressables
-configurations**. Close the editor first, then run:
+**Configure**, **Install** of Virtuademy SDK Environments, **Install interpreter** and a smarter
+**Re-resolve packages from git** also run without the window, for a build machine or a fresh
+clone, and so does the Addressables configuration that the SDK's Addressables management window
+applies with **Fix Addressables configurations**. Close the editor first, then run:
 
 ```
 Unity -batchmode -nographics -projectPath <your project> -logFile -
@@ -136,20 +143,34 @@ the pre-release. The command has to be run again until it exits with `0`. Exit c
 project changed, run again", and a new project takes three runs. The last run also configures
 Addressables: it gives the project the SDK's Addressables profile and resets the Addressables
 groups to the single default group, removing every other group and every entry, as the window's
-button does. A project that is already configured is left as it is. Any other code is an error, named
-in the log. On a fresh clone of a project that is already set up, the same command skips the
+button does. A project that is already configured is left as it is. Every run also re-resolves the
+Virtuademy git packages whose tag or branch has moved since the project pinned them (a new run is
+needed for that, so it exits with `2` too), and does nothing when none moved. Any other code is an
+error, named in the log. On a fresh clone of a project that is already set up, the same command skips the
 packages, which arrive with the clone. It redoes the two things stored per machine: the max
 texture size override and the interpreter inside the local IL2CPP. `-vdSetupSteps check` changes
 nothing and exits with `0` only when the project is set up.
 
-The command line does not move a project to another version. For that, use **Update packages to
-selected version** in the window.
+Two things run only when you ask for them, with `-vdSetupSteps`:
+
+- **Update packages to selected version**, as `-vdSetupSteps update -vdSetupVersion <version>`.
+  It does what the button does: it installs what the new version adds, **removes what it does not
+  list**, and moves HybridCLR with the version. The first run changes the project and exits with
+  `2`, the second one finishes and exits with `0`. When the move crosses a version that has an
+  update routine, the log says so and names it, for example **Virtuademy ▸ Update routines ▸
+  v2026.5 -> v2026.6**: run it next, from the menu, after backing up the project. The command
+  line does not run it.
+- **Update VS Library** (**Virtuademy ▸ Update VS Library**), as `-vdSetupSteps vslibrary`, once
+  Virtuademy SDK Environments is installed. It adds the Virtuademy nodes to the Visual Scripting
+  node library. It takes more than a minute and cannot tell that it has already run, which is why
+  it is not part of the default steps.
 
 ## What the installer writes to your project
 
 - `Packages/manifest.json` — one `"<package id>": "<git url>#<ref>"` line per installed package.
 - `Packages/packages-lock.json` — only when you press **Re-resolve packages from git** (it drops
-  the pins of the Virtuademy git packages).
+  the pins of the Virtuademy git packages), or from the command line when a package's tag or
+  branch has moved (it drops the pins of those packages only).
 - `Assets/Virtuademy/Editor/Settings/SetupConfiguration.asset` — the installer's own state: the
   current platform version, the packages it installed, the two advanced toggles. Keep it under
   version control with the rest of the project so a colleague opening the project sees the same

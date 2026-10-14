@@ -256,6 +256,10 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             Toggle showOnStartupToggle = root.Q<Toggle>("show-on-startup-toggle");
             showOnStartupToggle.SetValueWithoutNotify(ShowOnStartup);
             showOnStartupToggle.RegisterValueChangedCallback(evt => ShowOnStartup = evt.newValue);
+
+            Toggle autoUpdateToggle = root.Q<Toggle>("auto-update-toggle");
+            autoUpdateToggle.SetValueWithoutNotify(PackageAutoUpdate.Enabled);
+            autoUpdateToggle.RegisterValueChangedCallback(evt => PackageAutoUpdate.Enabled = evt.newValue);
             root.Q<Button>("load-error-retry-button").clicked += InitializeWindow;
 
             InitializeWindow();
@@ -1228,52 +1232,26 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         /// <summary>
         /// Drops this project's Virtuademy git packages from <c>packages-lock.json</c> and asks UPM
-        /// to resolve again, so a branch that has moved is actually picked up.
-        ///
-        /// The lock pins each git dependency to a resolved COMMIT, not to the ref the manifest
-        /// asked for. Nothing else moves it: not the refresh button, which re-reads the registry;
-        /// not <c>Client.Resolve</c> on its own, which honours the lock; not deleting
-        /// Library/PackageCache, which re-clones the same locked hash. Dropping the entry is what
-        /// lets UPM look the branch up again.
-        ///
-        /// Only entries whose source is git are touched — a registry package's pin is a version,
-        /// and re-resolving those is not what anyone pressing this wants.
+        /// to resolve again, so a tag or branch that has moved is actually picked up. Every one of
+        /// them, moved or not: this is the manual button. <see cref="SetupCli"/>'s <c>resolve</c>
+        /// step unpins only the ones that did move. What the lock pins, and why nothing else
+        /// moves it, is in <see cref="PackageLock"/>.
         /// </summary>
         private void ReResolvePackages()
         {
-            string lockFilePath = Path.Combine(Application.dataPath, "../Packages/packages-lock.json");
-            if (!File.Exists(lockFilePath))
+            if (!File.Exists(PackageLock.LockFilePath))
             {
                 UnityEngine.Debug.LogWarning("[Setup] There is no packages-lock.json to re-resolve from.");
                 return;
             }
 
-            JObject lockObj = JObject.Parse(File.ReadAllText(lockFilePath));
-            if (lockObj["dependencies"] is not JObject dependencies)
-            {
-                UnityEngine.Debug.LogWarning("[Setup] packages-lock.json has no dependencies section.");
-                return;
-            }
-
-            List<string> unpinned = new();
-            foreach (JProperty entry in dependencies.Properties().ToList())
-            {
-                if (!IsManagedPackage(entry.Name) || (string)entry.Value["source"] != "git")
-                {
-                    continue;
-                }
-
-                entry.Remove();
-                unpinned.Add(entry.Name);
-            }
-
+            List<string> unpinned = PackageLock.Unpin(packageManagerConfig.AllVersionsPackageRegistry);
             if (unpinned.Count == 0)
             {
                 UnityEngine.Debug.Log("[Setup] No Virtuademy git packages are pinned — nothing to re-resolve.");
                 return;
             }
 
-            File.WriteAllText(lockFilePath, lockObj.ToString());
             UnityEngine.Debug.Log($"[Setup] Unpinned {unpinned.Count} git package(s), re-resolving. " +
                                   "Each one is re-cloned, so give it a moment:\n  " +
                                   string.Join("\n  ", unpinned));
@@ -1339,19 +1317,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private async void GetInstalledPackages()
         {
-            // The list is saved in the project, so it can still hold packages an earlier version of
-            // this window added on the prefix alone. Dropped from the list only, never uninstalled:
-            // the window does not manage them, and the update would otherwise remove them.
-            List<string> unmanaged = packageManagerConfig.InstalledPackages
-                .Where(package => !IsManagedPackage(package.Name))
-                .Select(package => package.Name)
-                .ToList();
-            if (unmanaged.Count > 0)
-            {
-                packageManagerConfig.InstalledPackages.RemoveAll(package => unmanaged.Contains(package.Name));
-                UnityEngine.Debug.Log("[Setup] Not listed by any Virtuademy version, left as they are:\n  " +
-                                      string.Join("\n  ", unmanaged));
-            }
+            DropUnmanagedInstalledPackages(packageManagerConfig);
 
             // offlineMode, because the question is local: what did this project resolve. Answering
             // it used to require the registry, which made a local question fail whenever the
@@ -1375,11 +1341,43 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return;
             }
 
+            AddResolvedInstalledPackages(packageManagerConfig, listRequest.Result);
+        }
+
+        /// <summary>
+        /// Drops from <see cref="PackageManagerConfiguration.InstalledPackages"/> what no registry
+        /// entry lists. The list is saved in the project, so it can still hold packages an earlier
+        /// version of this window added on the prefix alone. Dropped from the list only, never
+        /// uninstalled: the window does not manage them, and the update would otherwise remove them.
+        /// </summary>
+        internal static void DropUnmanagedInstalledPackages(PackageManagerConfiguration config)
+        {
+            List<string> unmanaged = config.InstalledPackages
+                .Where(package => !IsManagedPackage(package.Name, config.AllVersionsPackageRegistry))
+                .Select(package => package.Name)
+                .ToList();
+            if (unmanaged.Count > 0)
+            {
+                config.InstalledPackages.RemoveAll(package => unmanaged.Contains(package.Name));
+                UnityEngine.Debug.Log("[Setup] Not listed by any Virtuademy version, left as they are:\n  " +
+                                      string.Join("\n  ", unmanaged));
+            }
+        }
+
+        /// <summary>
+        /// Adds to <see cref="PackageManagerConfiguration.InstalledPackages"/> the managed packages
+        /// the project resolved (<paramref name="resolved"/>: its direct dependencies) and the list
+        /// does not have. The window does both halves when it loads; <see cref="SetupCli"/>'s
+        /// <c>update</c> step does them before it moves the project, so both start an update from
+        /// the same list.
+        /// </summary>
+        internal static void AddResolvedInstalledPackages(PackageManagerConfiguration config, IEnumerable<UnityEditor.PackageManager.PackageInfo> resolved)
+        {
             List<PackageDefinition> installedPackages = new();
 
-            foreach (var package in listRequest.Result)
+            foreach (var package in resolved)
             {
-                if (IsManagedPackage(package.name) && !packages_to_exclude.Contains(package.name))
+                if (IsManagedPackage(package.name, config.AllVersionsPackageRegistry) && !packages_to_exclude.Contains(package.name))
                 {
                     PackageDefinition installedPackage = new()
                     {
@@ -1393,11 +1391,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             foreach (var package in installedPackages)
             {
-                if (!packageManagerConfig.InstalledPackages.Select(x => x.Name).Contains(package.Name))
+                if (!config.InstalledPackages.Select(x => x.Name).Contains(package.Name))
                 {
-                    packageManagerConfig.InstalledPackages.Add(package);
+                    config.InstalledPackages.Add(package);
 
-                    if (packageManagerConfig.SelectedVersionPackageDictionary.TryGetValue(package.Name, out PackageDefinition packageInfo))
+                    if (config.SelectedVersionPackageDictionary.TryGetValue(package.Name, out PackageDefinition packageInfo))
                     {
                         package.DisplayName = packageInfo.DisplayName;
                         package.Description = packageInfo.Description;
@@ -1451,63 +1449,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             {
                 previousInstallationVersion = packageManagerConfig.CurrentInstallationVersion;
 
-                // Nothing below reads the installed version's registry entry: the update works
-                // from what is installed and what the target lists, so it also moves a project
-                // off a version the registry no longer has. (An unused lookup of that entry used
-                // to sit here and threw NullReferenceException in exactly that case.)
-                List<string> removedPackages = new();
-
-                List<PackageDefinition> installedPackagesCopy = new(packageManagerConfig.InstalledPackages);
-
-                IEnumerable<PackageDefinition> newPackages = packageManagerConfig.SelectedVersionPackageDictionary.Values.Where(x => !installedPackagesCopy.Exists(y => y.Name == x.Name));
-                //add new packages
-                foreach (PackageDefinition package in newPackages)
-                {
-                    //if (package.InstallationSource == EInstallationSource.Submodule)
-                    //{
-                    //    UnityEngine.Debug.LogWarning($"Skipping submodule package {package.Name}. Align the submodule to the correct commit.");
-                    //    continue;
-                    //}
-                    packageManagerConfig.InstalledPackages.Add(packageManagerConfig.SelectedVersionPackageDictionary[package.Name]);
-                    InstallPackages(new() { packageManagerConfig.SelectedVersionPackageDictionary[package.Name] });
-                }
-
-                foreach (PackageDefinition package in installedPackagesCopy)
-                {
-                    //if (package.InstallationSource == EInstallationSource.Submodule)
-                    //{
-                    //    UnityEngine.Debug.LogWarning($"Skipping submodule package {package.Name}. Align the submodule to the correct commit.");
-                    //    continue;
-                    //}
-                    //overlapping packages
-                    if (packageManagerConfig.SelectedVersionPackageDictionary.TryGetValue(package.Name, out PackageDefinition target))
-                    {
-                        // The URL counts too: the same id can move repository across versions
-                        // (the 2026-09 renames did), and the manifest must follow it.
-                        if (package.Version != target.Version || package.Url != target.Url)
-                        {
-                            packageManagerConfig.InstalledPackages.Remove(package);
-                            UninstallPackages(new() { package.Name });
-
-                            packageManagerConfig.InstalledPackages.Add(packageManagerConfig.SelectedVersionPackageDictionary[package.Name]);
-                            InstallPackages(new() { packageManagerConfig.SelectedVersionPackageDictionary[package.Name] });
-                            //UnityEngine.Debug.Log($"Updated package {package.Name} from version {package.Version} to version {packageManagerConfig.SelectedVersionPackageDictionary[package.Name].Version}");
-                        }
-                    }
-                    else
-                    {
-                        //old packages
-                        removedPackages.Add(package.Name);
-
-                        packageManagerConfig.InstalledPackages.Remove(package);
-                        UninstallPackages(new() { package.Name });
-                    }
-                }
-
-                // HybridCLR follows the version too. It is not one of "our" packages, so the loops
-                // above do not see it. When it moves, the setup reinstalls the interpreter for the
-                // new version after the resolve below.
-                if (AlignInterpreterWithVersion(packageManagerConfig.SelectedVersion, removedPackages))
+                if (ApplyVersionUpdate(packageManagerConfig, out List<string> removedPackages))
                 {
                     SessionState.SetBool(pending_hybridclr_setup_key, true);
                 }
@@ -1531,6 +1473,83 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 Client.Resolve();
                 await LoadData();
             }
+        }
+
+        /// <summary>
+        /// Rewrites <c>Packages/manifest.json</c> and the configuration's installed list to move the
+        /// project from what it has to the version the configuration displays
+        /// (<see cref="PackageManagerConfiguration.SelectedVersion"/>). It works from what is
+        /// installed and what the target lists, never from the installed version's registry entry, so
+        /// it also moves a project off a version the registry no longer has. (An unused lookup of
+        /// that entry used to sit in the window and threw NullReferenceException in exactly that case.)
+        /// <list type="bullet">
+        /// <item>packages the target lists and the project lacks are added;</item>
+        /// <item>packages both have, at another version or url, are moved;</item>
+        /// <item>packages the project has and the target does not list are removed, and returned in
+        /// <paramref name="removedPackages"/>;</item>
+        /// <item>HybridCLR follows, see <see cref="AlignInterpreterWithVersion"/>.</item>
+        /// </list>
+        /// Neither the resolve nor the recording of the new version (<c>CurrentInstallationVersion</c>)
+        /// happens here: the caller does both, after whatever it still has to tell the user. The
+        /// window calls this from <c>UpdatePackagesToSelectedVersion</c>, <see cref="SetupCli"/> from
+        /// its <c>update</c> step. Returns true when HybridCLR moved, so the interpreter has to be
+        /// configured again after the resolve.
+        /// </summary>
+        internal static bool ApplyVersionUpdate(PackageManagerConfiguration config, out List<string> removedPackages)
+        {
+            removedPackages = new();
+
+            List<PackageDefinition> installedPackagesCopy = new(config.InstalledPackages);
+
+            IEnumerable<PackageDefinition> newPackages = config.SelectedVersionPackageDictionary.Values.Where(x => !installedPackagesCopy.Exists(y => y.Name == x.Name));
+            //add new packages
+            foreach (PackageDefinition package in newPackages)
+            {
+                //if (package.InstallationSource == EInstallationSource.Submodule)
+                //{
+                //    UnityEngine.Debug.LogWarning($"Skipping submodule package {package.Name}. Align the submodule to the correct commit.");
+                //    continue;
+                //}
+                config.InstalledPackages.Add(config.SelectedVersionPackageDictionary[package.Name]);
+                InstallPackages(new() { config.SelectedVersionPackageDictionary[package.Name] });
+            }
+
+            foreach (PackageDefinition package in installedPackagesCopy)
+            {
+                //if (package.InstallationSource == EInstallationSource.Submodule)
+                //{
+                //    UnityEngine.Debug.LogWarning($"Skipping submodule package {package.Name}. Align the submodule to the correct commit.");
+                //    continue;
+                //}
+                //overlapping packages
+                if (config.SelectedVersionPackageDictionary.TryGetValue(package.Name, out PackageDefinition target))
+                {
+                    // The URL counts too: the same id can move repository across versions
+                    // (the 2026-09 renames did), and the manifest must follow it.
+                    if (package.Version != target.Version || package.Url != target.Url)
+                    {
+                        config.InstalledPackages.Remove(package);
+                        UninstallPackages(new() { package.Name });
+
+                        config.InstalledPackages.Add(config.SelectedVersionPackageDictionary[package.Name]);
+                        InstallPackages(new() { config.SelectedVersionPackageDictionary[package.Name] });
+                        //UnityEngine.Debug.Log($"Updated package {package.Name} from version {package.Version} to version {config.SelectedVersionPackageDictionary[package.Name].Version}");
+                    }
+                }
+                else
+                {
+                    //old packages
+                    removedPackages.Add(package.Name);
+
+                    config.InstalledPackages.Remove(package);
+                    UninstallPackages(new() { package.Name });
+                }
+            }
+
+            // HybridCLR follows the version too. It is not one of "our" packages, so the loops
+            // above do not see it. When it moves, the setup reinstalls the interpreter for the
+            // new version after the resolve the caller starts.
+            return AlignInterpreterWithVersion(config.SelectedVersion, removedPackages);
         }
 
         /// <summary>

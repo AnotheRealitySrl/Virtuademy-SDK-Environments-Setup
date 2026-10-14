@@ -6,6 +6,55 @@ All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
 
 ### Added
 
+- **The editor keeps the project's Virtuademy git packages current when it opens** (minor bump). Once per
+  editor session, in the editor and never in batch mode (`SetupCli`'s `resolve` step does it there), a
+  background check compares, for every Virtuademy git package in `packages-lock.json`, the pinned commit with
+  what the manifest's ref (tag, branch, or none) points to on the remote (`git ls-remote`, off the main thread).
+  **All or nothing:** if every remote answered and some moved, exactly those are unpinned and the editor
+  re-resolves, after logging each as `<package> moved on its remote, <old> -> <new>`; if any remote could not be
+  checked nothing is changed and one warning is logged. **The installer package itself is included** (unlike the
+  `resolve` step): it is the package whose tag moves when this feature is fixed, creators install it by git URL,
+  and nothing else would ever move it; that is safe because the check is finished, and the session flag set,
+  before the lock is touched, so the recompile that follows finds the flag and does nothing. **Opt-out:** the
+  toggle **Update Virtuademy git packages when the project opens** at the foot of **Virtuademy ▸ Setup
+  project**, an `EditorPrefs` key per project and per machine, on by default.
+- **`SetupCli` arguments are strict** (behaviour change). Any `-vd...` argument that is not exactly
+  `-vdSetupSteps`, `-vdSetupVersion` or `-vdSetupRegistry` (`--vdSetupSteps`, `-vdsetupsteps`, `/vdSetupSteps`),
+  an option given twice, and a stray value (`-vdSetupSteps sdk update`) now exit `10` instead of being ignored,
+  which used to run the default steps nobody asked for.
+
+- **`SetupCli` has `resolve`, `update` and `vslibrary` steps** (minor bump), so the whole setup
+  can be driven from the command line.
+  - **`resolve`** is part of the default steps, after `sdk` and before `interpreter`. For every
+    Virtuademy git package in `packages-lock.json` it compares the pinned commit with what the
+    manifest's ref points to on the remote now (`git ls-remote`, tags peeled), unpins the ones
+    that moved and exits `2`; the next launch resolves them again and exits `0`. It does nothing
+    when nothing moved. **All or nothing:** when the remote of any package cannot be reached (it is
+    "unknown"), nothing is unpinned, not even the packages known to have moved, so a timeout cannot
+    leave the project with a mix of new and old packages; that is a warning and exit `0`, the
+    network being down never fails the step. The installer package itself is never touched.
+  - The `[SetupCli] REPORT` has `stalePackages` (name, reference, locked and remote commit) and
+    `stalePackagesChecked`; `-vdSetupSteps check` exits `3` when a package is stale, never because
+    the network is down.
+  - **`update`** (never a default step) is **Update packages to selected version** from the command
+    line: `-vdSetupSteps update -vdSetupVersion <version>` moves a project that records another
+    registry version to the target, with the window's own code: **what the target does not list is
+    removed**, and HybridCLR follows the registry. It cannot be combined with `sdk`, which still
+    refuses such a project (exit `15`, and the message now names the update step). When the move
+    crosses an update routine of the new SDK (menu **Virtuademy ▸ Update routines**), the second
+    launch logs a warning with its menu name and its command line
+    (`-executeMethod Virtuademy.BreakingChangeSolvers.UpdateRoutinesCli.Run -vdRoutine 2026.6`): it must run
+    next, newest first (2026.6 before 2026.5); SetupCli does not run it.
+  - **`vslibrary`** (opt-in) calls the SDK's `VisualScriptingSetupEditor.Setup()`, the **Virtuademy
+    ▸ Update VS Library** menu item, by reflection. It is not a default step: it took 73 to 80 s on
+    a scratch project, every time, because it cannot tell it is already done. An SDK without the
+    method is skipped with a warning.
+  - New exit code `20`: the `vslibrary` step failed.
+- The window's **Re-resolve packages from git** button, **Update packages to selected version** and
+  the installed-packages upkeep moved into static methods (`PackageLock`,
+  `CreatorKitSetupWindow.ApplyVersionUpdate`, `DropUnmanagedInstalledPackages`,
+  `AddResolvedInstalledPackages`) that `SetupCli` calls too. The buttons do what they did.
+
 - **`SetupCli` has an `addressables` step** (minor bump). It is part of the default steps, after
   `interpreter`, and does what the **Fix Addressables configurations** button of the Addressables
   management window of Virtuademy-SDK-Environments does: it calls `AddressablesConfiguration.Apply()`

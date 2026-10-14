@@ -33,7 +33,19 @@ texture size settings are off. It reuses the window's own checks. Deliberately l
 version (it needs the registry, hence the network) and the interpreter (HybridCLR). The reason is
 logged when the window opens. The toggle at the foot of the window turns the startup check off; the
 choice is an `EditorPrefs` key per `PlayerSettings.productGUID` (default on), so it is per project
-and per machine and nothing is committed. The header logo is `Icons/virtuademy-logo-{light,dark}.png`, picked by
+and per machine and nothing is committed.
+
+`PackageAutoUpdate` (`[InitializeOnLoad]`, also once per editor session by a `SessionState` flag, and never
+in batch mode) keeps the project's Virtuademy git packages current: it runs the stale check of the `resolve`
+step (`PackageLock.FindStaleAsync`: the lock and the manifest are read on the main thread, every
+`git ls-remote` and the registry download run off it) and, **all or nothing**, unpins exactly the packages that
+moved and calls `Client.Resolve()` when every remote answered, logging each as `<package> moved on its remote,
+<old> -> <new>`; when any remote could not be asked it changes nothing and warns once. Unlike `resolve`, it
+**includes this installer**: its tag is the one that moves when this feature changes, creators install it by git
+URL, and nothing else would move it. That is safe because the flag is set before the lock is touched, so the
+recompile of this assembly that follows finds it and does nothing. The second toggle at the foot of the window,
+**Update Virtuademy git packages when the project opens**, turns it off (`EditorPrefs` key
+`Virtuademy.SDK.Environments.Setup.AutoUpdatePackages.<productGUID>`, default on, per project and per machine). The header logo is `Icons/virtuademy-logo-{light,dark}.png`, picked by
 `EditorGUIUtility.isProSkin`, rasterized from the Landing's `themes/virtuademy/full-*.svg`; the
 `.meta` files are committed because a git package is immutable and Unity cannot generate them.
 
@@ -43,7 +55,8 @@ State lives in a `PackageManagerConfiguration` asset, created on first open at
 
 "Our" packages are recognised by prefix — `com.anotherealitysrl.virtuademy`, `…reflectis`,
 `…spacs` (`package_prefixes` in the window). A new prefix must be added there, or the window
-neither sees those packages as installed nor unpins them on re-resolve.
+neither sees those packages as installed nor unpins them on re-resolve (the button, or the
+command line's `resolve` step).
 
 ### Interpreter setup
 
@@ -84,15 +97,24 @@ the SDK compiles against.
 
 ### Command line (`SetupCli`)
 
-`SetupCli.Run` does what three of the window's buttons do, in batch mode: **Configure**
-(`configure`), **Install** next to Virtuademy SDK Environments at a registry version (`sdk`), and
-**Install interpreter** (`interpreter`). A fourth step, `addressables`, does what the
-**Fix Addressables configurations** button of the SDK's Addressables management window does.
+`SetupCli.Run` does what the window's buttons do, in batch mode. The steps, in the order they run:
+
+| Step | Does | Default |
+|---|---|---|
+| `configure` | **Configure** | yes |
+| `sdk` | **Install** next to Virtuademy SDK Environments, at a registry version | yes |
+| `update` | **Update packages to selected version**, to the registry version given | no |
+| `resolve` | **Re-resolve packages from git**, only for the packages whose tag or branch moved | yes |
+| `interpreter` | **Install interpreter** | yes |
+| `addressables` | **Fix Addressables configurations** of the SDK's Addressables management window | yes |
+| `vslibrary` | **Virtuademy ▸ Update VS Library** of the SDK | no |
+| `check` | Changes nothing; reports | alone only |
 
 ```
 Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerErrors
       -executeMethod Virtuademy.SDK.Environments.Setup.Editor.SetupCli.Run
-      -vdSetupVersion develop [-vdSetupSteps configure,sdk,interpreter,addressables | check]
+      -vdSetupVersion develop
+      [-vdSetupSteps configure,sdk,update,resolve,interpreter,addressables,vslibrary | check]
       [-vdSetupRegistry <url or file>]
 ```
 
@@ -107,6 +129,7 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
      (about 40 s), and then the Addressables configuration, in the same launch.
 
   A fourth launch is needed only when the interpreter setup is not ready until a recompilation.
+  An update takes two launches, and a moved tag one more.
 - **The interpreter step follows the registry.** It installs the HybridCLR that the project's
   recorded version declares. When the manifest asks for another one it switches to it, which is a
   repair rather than a version update; exit `2`. When the local IL2CPP holds another libil2cpp,
@@ -121,6 +144,54 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
   "Build & Deploy" builds every platform for minutes and fails at the end. An SDK version that
   predates `AddressablesConfiguration` is skipped with a warning (exit `0`); one whose editor
   assembly did not compile exits `16`.
+- **The `resolve` step** compares, for every git package of ours in `Packages/packages-lock.json`,
+  the commit it pins with what the manifest's ref points to on the remote now (`git ls-remote`; a
+  tag is peeled with `^{}`, so an annotated tag gives its commit; a commit ref is up to date by
+  definition; no ref means the remote's HEAD). The ones that moved are unpinned and the step exits
+  `2`; the next launch resolves them again and finds none moved (exit `0`), with the lock back on
+  the tag's commit. Nothing else is unpinned. It sits among the default steps, after `sdk` and
+  before `interpreter`, because it does nothing when nothing moved.
+  - **Unknown is not stale, and one unknown stops the step.** When the remote cannot be asked (no
+    network, no access, the ref is gone) its packages are "unknown". The step is all or nothing: if
+    any package is unknown it unpins nothing, not even the packages known to have moved (a partial
+    update would leave a mix of new and old packages), warns and exits `0` (`ls-remote` gives each
+    package 30 s and never prompts for credentials). `check` reports the same.
+  - **Which packages.** The window button's rule: git entries of the lock that a registry entry
+    lists, with one of our prefixes. The installer package is left out on purpose, by name: it is
+    the code that is running (unpinning it recompiles this assembly) and its version is the
+    project's choice, not the registry's. It is not in any registry entry, so the button never
+    touched it either. Only the editor-start update (`PackageAutoUpdate`, above) includes it.
+  - **The window button keeps its meaning**: it unpins every one of those packages and resolves,
+    moved or not, which is what to press when a pin is wrong for another reason. It shares the
+    lock code (`PackageLock`) with this step.
+- **The `update` step** is **Update packages to selected version** without the window: for a
+  project that records another registry version it installs what the target adds, moves what it
+  changes, **removes what it does not list**, and moves HybridCLR to the target's `interpreter` (or
+  out of the project, for a version before 2026.6), through the same static method the window's
+  button calls (`ApplyVersionUpdate`). It writes the manifest and `SetupConfiguration.asset` and
+  exits `2`; the next launch resolves the packages and exits `0`, or `16` when
+  Virtuademy-SDK-Environments did not resolve. It refuses a project that records no version (`16`),
+  an editor that is not the target's `requiredUnityVersion` (`14`) and a version the registry does
+  not list (`10`), and it cannot be combined with `sdk` (`10`). It is never a default step. Before
+  2026.6 the packages are not installed by the command line, but a project that has them can be
+  moved off them. "Resolve breaking changes automatically" is not honoured: a warning says so.
+  - **Update routines.** When the move crosses a step that has an update routine in the new SDK (a
+    menu item under `Virtuademy/Update routines`, such as `v2026.5 -> v2026.6`), the launch that
+    finds the project at the target logs a warning with the menu name: the routine must run next.
+    The step does not run it. The packages of the new SDK only exist after the resolve, so the
+    first launch writes `Library/VirtuademySetupCli.updated-from` and the second lists the routines
+    and deletes it. A pre-release target (`develop`) or a downgrade is not a step between released
+    versions: the log points at the menu instead.
+- **The `vslibrary` step** calls `VisualScriptingSetupEditor.Setup()` of Virtuademy-SDK-Environments,
+  the **Virtuademy ▸ Update VS Library** menu item, by reflection. It marks Visual Scripting as
+  used, resets its type options to the defaults, adds every type the project's
+  `VisualScriptingCustomTypeCollector` assets list, saves the settings and rebuilds the units
+  (`Assets/Unity.VisualScripting.Generated/.../UnitOptions.db`, 36 MB on a scratch project).
+  **Opt-in**: it took 73 s and 80 s on two consecutive runs (2026-10-14), and it cannot tell it is
+  already done, so a default step would add more than a minute to every launch, including the one
+  of a project that is set up. Run it after the SDK is installed, for example
+  `-vdSetupSteps vslibrary`. An SDK without the method is skipped with a warning; an exception in it
+  exits `20`.
 - **`-ignoreCompilerErrors`** lets Unity run the method on a project that does not compile, for
   example one that pulled HybridCLR 9.0.0, so the step can repair it. Measured: two launches, from
   24 compile errors to `0`. Without the flag, Unity aborts before `-executeMethod` (exit `1`). The
@@ -133,8 +204,9 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
   interpreter retries are counted in `Library/VirtuademySetupCli.interpreter-attempts`, at most
   three, as `HotUpdateSetupper` allows itself.
 - **Same logic as the window.** Configure, the install with dependencies, the configuration asset
-  and the interpreter checks are internal static methods of `CreatorKitSetupWindow`, called by
-  both. The files have the same format: manifest lines `url#version`, and `SetupConfiguration.asset`
+  the interpreter checks and the version update (`ApplyVersionUpdate`, with the installed-list
+  upkeep it starts from) are internal static methods of `CreatorKitSetupWindow`, called by both;
+  the lock file code is `PackageLock`. The files have the same format: manifest lines `url#version`, and `SetupConfiguration.asset`
   with *Show pre-releases* on when the version is a prerelease, so the window lists it.
 - **Which packages.** The `sdk` step installs Virtuademy-SDK-Environments and its dependencies,
   which is the window's **Install** click. On a new project the window offers that click only for
@@ -145,10 +217,11 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
 - **Stricter than the window on the Unity version.** The window shows a mismatch with the entry's
   `requiredUnityVersion` in red. The `sdk` step refuses it (exit `14`), because nobody is watching a
   batch run.
-- **No update.** The `sdk` step refuses a project that already has Virtuademy packages of another
-  version, or a manifest asking for another ref (exit `15`). Moving between versions is the
-  window's *Update packages to selected version*, which removes what the new version drops. "Already
-  installed" compares the Virtuademy-SDK-Environments line only, not its dependencies.
+- **The `sdk` step does not update.** It refuses a project that already has Virtuademy packages of
+  another version, or a manifest asking for another ref (exit `15`). Moving between versions is the
+  `update` step, or the window's *Update packages to selected version*; both remove what the new
+  version drops. "Already installed" compares the Virtuademy-SDK-Environments line only, not its
+  dependencies.
 - **A refused run writes nothing.** `SetupConfiguration.asset` is created or changed only when a
   step is about to write.
 - **`check`** changes nothing. It runs after the git and modules checks, so those still exit `11`
@@ -162,7 +235,13 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
     false when it could not;
   - the Addressables are configured: the report's `addressablesConfigured` is `false`. It is `null`
     when the SDK has no `AddressablesConfiguration` to ask (not installed yet, or older than the
-    class), and `null` does not fail the check.
+    class), and `null` does not fail the check;
+  - no git package of ours moved on the remote: `stalePackages` lists each one that did (`name`,
+    `reference`, `lockedCommit`, `remoteCommit`) and fails the check. `stalePackagesChecked` is
+    `false` when the remote could not be asked for some package, which does **not** fail it. The
+    check reads the registry (to know which packages are ours) as soon as the project has a
+    `packages-lock.json`, so a project without network reports `stalePackagesChecked: false`.
+  - The `vslibrary` step has no check: nothing tells that it is done.
 - The method exits the editor itself, so `-quit` is not needed. Every launch ends with a
   `[SetupCli] REPORT` line (one JSON object with every check) and `[SetupCli] EXIT <code>`.
 - **Exit `1` without those two lines is Unity's own failure, not SetupCli's.** It happens when the
@@ -174,17 +253,18 @@ Unity -batchmode -nographics -projectPath <project> -logFile - -ignoreCompilerEr
 | `0` | Done |
 | `1` | Unexpected exception (stack trace in the log), or Unity aborted before `-executeMethod` |
 | `2` | The project changed: launch again |
-| `3` | `check`: not set up |
-| `10` | Bad arguments, a version the registry does not list, or one before 2026.6 (no Virtuademy-SDK-Environments) |
+| `3` | `check`: not set up, including a git package that moved on the remote |
+| `10` | Bad arguments (`sdk` with `update` included), a version the registry does not list, or one before 2026.6 for `sdk` (no Virtuademy-SDK-Environments) |
 | `11` | git cannot be run from the editor process |
 | `12` | Editor modules missing (Android, iOS, WebGL, Windows) |
 | `13` | Registry unreadable or empty, it no longer lists the project's recorded version, or its `interpreter` is malformed |
-| `14` | The editor is not the entry's `requiredUnityVersion` |
-| `15` | Another Virtuademy version is installed |
-| `16` | Virtuademy-SDK-Environments missing, not resolved or not compiled, or the project records no version |
+| `14` | The editor is not the entry's `requiredUnityVersion` (`sdk` and `update`) |
+| `15` | Another Virtuademy version is installed (`sdk`) |
+| `16` | Virtuademy-SDK-Environments missing, not resolved or not compiled, or the project records no version (`interpreter`, `update`) |
 | `17` | Interpreter setup failed: the entry declares no `interpreter`, HybridCLR did not resolve or compile, or three configurations did not make it ready |
 | `18` | Project settings could not be applied |
 | `19` | The `addressables` step failed: `AddressablesConfiguration.Apply()` threw, or the project did not end configured |
+| `20` | The `vslibrary` step failed: `VisualScriptingSetupEditor.Setup()` threw |
 
 `Virtuademy-Env-Test` drives it with `scripts/unity.sh setup <version>`, which passes
 `-ignoreCompilerErrors` and relaunches until the code is not `2`; `SETUP_REGISTRY=<file or url>`
