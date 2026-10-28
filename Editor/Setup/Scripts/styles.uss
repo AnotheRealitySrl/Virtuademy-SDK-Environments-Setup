@@ -1,28 +1,29 @@
 .h1 {
 }
 
-/* Brand header, in the manner of the Ready Player Me setup window. The logo image is set
-   from code, because which of the two variants is readable depends on the editor skin:
-   virtuademy-logo-light.png (light lettering) on the dark skin, virtuademy-logo-dark.png on
-   the light one. Both are rasterized from the Landing's themes/virtuademy/full-*.svg. */
+/* Brand header: the same as the SDK's windows (Virtuademy-SDK-Core, Editor/Common/VirtuademyWindowHeader.uss and
+   its two logo images). This package cannot reference the SDK, which it installs, so it keeps an identical copy: change
+   both together. The logo image is set from code, because which variant is readable depends on the editor skin:
+   virtuademy-logo-light.png (light lettering) on the dark skin, virtuademy-logo-dark.png on the light one. */
 .window-header {
     align-items: center;
-    padding-top: 12px;
-    padding-bottom: 8px;
+    padding-top: 10px;
+    padding-bottom: 6px;
 }
 
 .header-logo {
     width: 100%;
-    max-width: 320px;
-    height: 50px;
-    -unity-background-scale-mode: scale-to-fit;
+    max-width: 280px;
+    height: 44px;
+    background-size: contain;
 }
 
+/* The editor theme's text colour, dimmed: grey on the dark skin and still readable on the light one. */
 .header-subtitle {
-    margin-top: 4px;
-    font-size: 14px;
-    -unity-font-style: bold;
-    -unity-text-align: upper-center;
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--unity-colors-default-text);
+    opacity: 0.7;
 }
 
 /* Pinned under the scroll view: the template container and the ScrollView grow, the footer
