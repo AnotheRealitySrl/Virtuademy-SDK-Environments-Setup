@@ -2,6 +2,52 @@
 
 All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
 
+## Unreleased
+
+### Added
+
+- **The setup window is a step-by-step wizard.** One step at a time, with a step indicator under the
+  header and **Back** / **Next**: **Computer** (git, Unity version, editor modules), **Project** (URP and
+  project settings), **SDK** (platform version and package installation), **C# scripts** (the interpreter,
+  optional), **Connection** and **Done**. Every step shows the group of the page it replaces, with the same
+  checks and buttons; Next is enabled only when the step's checks are green (the interpreter step can be
+  skipped, and a Unity version other than the required one is a warning on the first step, not a gate). **Check again** re-reads the computer and the project. The window opens on the first step that
+  fails (once per editor session; within it, the step is kept across the reloads package actions cause).
+  The **SDK** step offers three choices: the latest release (the newest entry of the registry that is not a
+  pre-release; the default), a previous release (a dropdown, newest first), and the development version, shown
+  only when **Show the development version** is ticked (the same setting as **Show pre-releases** on the full
+  page). One button says what it will do (**Install**, **Update to** or **Change to** a version, or **Installed**)
+  and runs the page's own install or **Update packages to selected version**; it is disabled, with the reason,
+  when the version needs another Unity than the open editor. The step is green only when the SDK is installed at
+  the chosen version **and the project compiles**; when it does not, the step says so and opens the Console. The
+  Package manager block (per-package buttons, last refresh, advanced settings) is not shown in the wizard; it
+  is unchanged on the full page. The **C# scripts** step shows the interpreter's state and its action (install,
+  fix, or ready), or says why it cannot run yet (SDK missing, project does not compile).
+  **Connection** opens the SDK's own window to import the configuration file from the Back Office and log
+  in: **Publish Environments** from SDK 2026.7.0, **Available Tenants** or **Addressables management** in
+  earlier ones, found by menu path because this package cannot reference the SDK. It cannot see the login,
+  so the step never blocks. **Done** summarises the steps and opens the Readme, the documentation and the
+  publish window. **Show all checks**, at the foot, shows the whole page as before: nothing the window did
+  is gone.
+- **A Readme window, shown when the project opens and nothing needs setup.** **Virtuademy ▸ Readme** opens
+  it at any time: what the SDK is, the first steps (scene, placeholders, build and publish), the menu entries
+  and links to the documentation. **Do not show this when the project opens** is saved per user and per
+  project, in `UserSettings/Virtuademy/setup.json` (not versioned).
+
+### Changed
+
+- **Project settings: Active Input Handling must be Both.** A new row in the Project settings group (step 2 of
+  the wizard): Player Settings > Active Input Handling is **Both**, as in the Virtuademy player, where environment
+  scripts may read the old `Input` class and the SDK uses the Input System package. **Configure** sets it and offers
+  to restart the editor, because Unity applies it only when the editor starts; `SetupCli`'s `configure` step sets
+  it too, and its report has `inputHandlingBoth`. Until now a new project met the Input System package's own
+  dialog ("native platform backend not enabled", Enable and restart) in the middle of the SDK install, and a
+  project on one input system only lost the other in Play mode (on the new one only, the old `Input` class throws).
+- **Startup.** With a problem the wizard opens, as the setup window did, unless **Open this window when the
+  project opens and needs setup** is off; with none the Readme opens, unless it was turned off for the
+  project. Still once per editor session and never in batch mode. `SetupCli` and the automatic package update
+  are unchanged.
+
 ## v2.0.0
 
 ### Added to this release on 2026-10-14 (tag moved)

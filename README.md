@@ -5,8 +5,8 @@ else arrives through it — so it is the one package whose own URL has to be typ
 
 - Package id `com.anotherealitysrl.virtuademy-sdk-environments-setup`, assembly and namespace
   `Virtuademy.SDK.Environments.Setup.Editor`, editor-only.
-- Entry points: `CreatorKitSetupWindow`, menu **Virtuademy ▸ Setup project**; `SetupCli.Run` for
-  batch mode (see "Command line" below).
+- Entry points: `CreatorKitSetupWindow`, menu **Virtuademy ▸ Setup project**; `ReadmeWindow`, menu
+  **Virtuademy ▸ Readme**; `SetupCli.Run` for batch mode (see "Command line" below).
 - **User documentation** (install, every check, every button): [Documentation~/index.md](Documentation~/index.md).
 
 This README is for whoever maintains the installer or publishes the files it reads.
@@ -24,16 +24,47 @@ This README is for whoever maintains the installer or publishes the files it rea
 3. Lists the packages of the selected registry entry and installs, uninstalls or moves them by
    writing `"{url}#{version}"` lines into `Packages/manifest.json`, then calling `Client.Resolve`.
 
-The window opens on its own at the first domain reload of an editor session — the project
+The window is a wizard over the page above, in `CreatorKitSetupWindow.Wizard.cs` (a `partial` of the
+window). Six steps — Computer, Project, SDK, C# scripts (optional), Connection, Done — each show a group of the
+page (git + editor configuration; project settings) or a panel built in code (SDK and C# scripts, in
+`CreatorKitSetupWindow.WizardSteps.cs`; Connection and Done). The wizard re-implements no check and no action: it hides and shows the
+groups, and enables Next from the same `projectConfig` and `packageManagerConfig` the page reads
+(`StepOk`; the Computer step needs git and the editor modules only, the Unity version being a warning
+because it is an exact compare; the SDK step is green when `virtuademy-sdk-environments` is registered, the selected version is the
+installed one and the scripts compile: `!EditorUtility.scriptCompilationFailed`, not `EditorApplication.isCompiling`, read by
+the same 500 ms poll). The SDK step's three choices (latest release = the last non-prerelease entry; a previous release;
+the development entry, only while `ShowPrereleases` is on) write the window's `DisplayedReflectisVersion`, and its
+one button calls the window's own `InstallPackageWithDependencies` (new project, recorded version) or
+`UpdatePackagesToSelectedVersion`; a version whose `requiredUnityVersion` is not the open editor's is refused with
+the reason. The window moves a project to an older release without refusing it, so the wizard does the same and warns). **Show all checks** at the foot (`showAllChecks`, serialized) restores
+the page as it was, and the wizard's own styles are in `wizard.uss`, loaded from code. The step and that
+toggle are `[SerializeField]`s, so they survive the domain reload every package action ends in; the
+first load of an editor session still picks the first failing step (a `SessionState` flag), whatever
+step a window restored from the layout was on. The Connection step cannot reference the SDK, so it
+finds the SDK's window by `[MenuItem]` path (`SdkWindowLinks`: Publish Environments from SDK
+2026.7.0, Available Tenants or Addressables management before it) and opens it with
+`EditorApplication.ExecuteMenuItem`; a new SDK menu path goes in that list.
+
+`ReadmeWindow` (`readme.uss`) is the Readme: a window rather than an asset, because a package is
+read-only. Its "do not show" flag is `SetupUserSettings.HideReadmeOnStartup`, the key
+`hideReadmeOnStartup` in `UserSettings/Virtuademy/setup.json`: per user and per project, not
+versioned, and not an `EditorPrefs` key (machine-wide) or a project setting (committed). Its links
+go to the documentation root and to the SDK section of the newest version whose pages were checked
+(`SdkWindowLinks.documentation_sdk_url`: the site has no address for "the latest", so raise it when
+a newer version is published).
+
+The setup window or the Readme opens on its own at the first domain reload of an editor session — the project
 opening, or this package arriving — through `SetupWindowStartup` (`[InitializeOnLoad]`, guarded by
-a `SessionState` flag, skipped in batch mode) — **only if the project needs it**:
+a `SessionState` flag, skipped in batch mode). The setup window opens **only if the project needs it**:
 `CreatorKitSetupWindow.FindStartupIssue` returns a reason when `virtuademy-sdk-environments` is not
-registered, git cannot be run, an editor module is missing, or the URP / API compatibility / max
-texture size settings are off. It reuses the window's own checks. Deliberately left out: the Unity
+registered, git cannot be run, an editor module is missing, or the URP / API compatibility / Active
+Input Handling / max texture size settings are off. It reuses the window's own checks. Deliberately left out: the Unity
 version (it needs the registry, hence the network) and the interpreter (HybridCLR). The reason is
 logged when the window opens. The toggle at the foot of the window turns the startup check off; the
 choice is an `EditorPrefs` key per `PlayerSettings.productGUID` (default on), so it is per project
-and per machine and nothing is committed.
+and per machine and nothing is committed. When the project needs nothing, the Readme opens instead,
+unless `SetupUserSettings.HideReadmeOnStartup` is set; when the project needs setup but the footer
+toggle is off, neither opens.
 
 `PackageAutoUpdate` (`[InitializeOnLoad]`, also once per editor session by a `SessionState` flag, and never
 in batch mode) keeps the project's Virtuademy git packages current: it runs the stale check of the `resolve`
@@ -398,7 +429,7 @@ dependency naming a package that is not in the entry's `packages` is logged as a
 ```
 
 - **The value.** It is the HybridCLR that the release's player runs: the tag
-  `Virtuademy-Unity/Packages/manifest.json` pins at the release commit. The meta-repo's
+  `Packages/manifest.json` of the Virtuademy application project pins at the release commit. The meta-repo's
   `docs/deploy.md` has the check.
 - **Where it goes.** In the entry, not in `packages`. The interpreter is optional and installed
   only by Install interpreter. *Update packages to selected version* installs every element of
@@ -444,7 +475,7 @@ nothing to look up until the next refresh.
 
 ## Developing the installer
 
-The installer is not mounted in `Virtuademy-Unity` — there the packages are embedded submodules and
+The installer is not mounted in the Virtuademy application project — there the packages are embedded submodules and
 the window has nothing to do. It is exercised in `Virtuademy-Env-Test`, an empty Unity project that
 mounts this repository under `Packages/` and runs the install and publish flow from outside.
 

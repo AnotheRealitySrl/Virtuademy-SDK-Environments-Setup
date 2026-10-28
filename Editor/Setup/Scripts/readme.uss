@@ -1,0 +1,116 @@
+/* The Readme window (ReadmeWindow.cs). Its own sheet, with its own class names, so the window needs
+   nothing from styles.uss. The brand header repeats the look of the setup window's one. */
+.vd-readme {
+    flex-grow: 1;
+}
+
+.vd-readme__scroll {
+    flex-grow: 1;
+    padding-top: 4px;
+    padding-right: 12px;
+    padding-bottom: 8px;
+    padding-left: 12px;
+}
+
+.vd-readme__header {
+    align-items: center;
+    padding-top: 10px;
+    padding-bottom: 8px;
+}
+
+.vd-readme__logo {
+    width: 100%;
+    max-width: 280px;
+    height: 44px;
+    background-size: contain;
+}
+
+.vd-readme__title {
+    margin-top: 6px;
+    font-size: 16px;
+    -unity-font-style: bold;
+    white-space: normal;
+}
+
+.vd-readme__heading {
+    margin-top: 14px;
+    margin-bottom: 4px;
+    font-size: 13px;
+    -unity-font-style: bold;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(128, 128, 128, 0.4);
+    padding-bottom: 2px;
+}
+
+.vd-readme__text {
+    white-space: normal;
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 2px;
+    margin-bottom: 2px;
+    padding-left: 0;
+}
+
+.vd-readme__step {
+    flex-direction: row;
+    margin-top: 6px;
+}
+
+.vd-readme__step-number {
+    width: 22px;
+    height: 22px;
+    margin-top: 1px;
+    margin-right: 8px;
+    border-top-left-radius: 11px;
+    border-top-right-radius: 11px;
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
+    background-color: rgb(0, 110, 245);
+    color: rgb(255, 255, 255);
+    -unity-text-align: middle-center;
+    -unity-font-style: bold;
+    flex-shrink: 0;
+}
+
+.vd-readme__step-body {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.vd-readme__step-title {
+    -unity-font-style: bold;
+}
+
+.vd-readme__menu-row {
+    margin-top: 4px;
+}
+
+.vd-readme__menu-path {
+    -unity-font-style: bold;
+}
+
+.vd-readme__links {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.vd-readme__footer {
+    flex-shrink: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 4px;
+    padding-right: 8px;
+    padding-bottom: 4px;
+    padding-left: 8px;
+    border-top-width: 1px;
+    border-top-color: rgba(0, 0, 0, 0.5);
+}
+
+.vd-readme__hide-toggle {
+    flex-direction: row-reverse;
+    margin-left: 0;
+    margin-right: 12px;
+}

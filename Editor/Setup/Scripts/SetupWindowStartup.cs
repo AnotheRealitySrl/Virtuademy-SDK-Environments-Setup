@@ -5,10 +5,12 @@ using UnityEngine;
 namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     /// <summary>
-    /// Opens the setup window when the project is opened, but only when the project needs it:
+    /// Opens a window when the project is opened. When the project needs setup:
     /// Virtuademy-SDK-Environments is not installed, or one of the window's local checks fails
-    /// (see <see cref="CreatorKitSetupWindow.FindStartupIssue"/>). A configured project opens
-    /// without it, and the toggle at the foot of the window turns the check off altogether.
+    /// (see <see cref="CreatorKitSetupWindow.FindStartupIssue"/>), it is the setup window, which
+    /// opens its wizard on the first step that fails; the toggle at the foot of the window turns
+    /// that off. When nothing is wrong it is the <see cref="ReadmeWindow"/>, unless the person
+    /// asked not to see it in this project (<see cref="SetupUserSettings.HideReadmeOnStartup"/>).
     ///
     /// [InitializeOnLoad] runs on every domain reload — each script change, each package
     /// resolve — so a session flag limits it to the first one: the project opening, or this
@@ -38,14 +40,28 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private static void OpenIfNeeded()
         {
-            // The footer toggle of the window turns the whole startup check off.
-            if (!CreatorKitSetupWindow.ShowOnStartup)
+            // Nothing could open, so do not run the checks: they start git, and a person who turned
+            // both windows off would still get its warning when git is missing.
+            if (!CreatorKitSetupWindow.ShowOnStartup && SetupUserSettings.HideReadmeOnStartup)
             {
                 return;
             }
 
             string issue = CreatorKitSetupWindow.FindStartupIssue();
             if (issue == null)
+            {
+                // Nothing to set up: orient the creator instead, unless they said not to.
+                if (!SetupUserSettings.HideReadmeOnStartup)
+                {
+                    ReadmeWindow.ShowWindow();
+                }
+
+                return;
+            }
+
+            // The footer toggle of the setup window turns its startup opening off. The Readme is
+            // not shown instead: a project that needs setup is not ready to be read about.
+            if (!CreatorKitSetupWindow.ShowOnStartup)
             {
                 return;
             }

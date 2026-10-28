@@ -72,7 +72,7 @@
    They used to point at Check.png in com.unity.multiplayer.center and
    iconconflicted.png in com.unity.collab-proxy — two packages this one has nothing
    to do with and does not declare. In a project that happens to have them, as
-   Virtuademy-Unity does, it worked; in a creator's project the URLs did not resolve,
+   the Virtuademy application project does, it worked; in a creator's project the URLs did not resolve,
    so every icon fell back to the missing-asset placeholder and rendered as the same
    yellow warning triangle whatever the underlying state was. */
 .settings-item-green-icon {

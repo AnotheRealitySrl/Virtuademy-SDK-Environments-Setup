@@ -1,0 +1,378 @@
+/* The setup window as a wizard (CreatorKitSetupWindow.Wizard.cs). Loaded from code, after styles.uss,
+   so the two can change independently. The colours below are for the dark editor skin: brand blue for
+   the current step, green and red for the state, grey for what is only information. The window root
+   carries vd-skin-dark or vd-skin-light (set from EditorGUIUtility.isProSkin), and the last block of this
+   file redefines every text colour for the light skin, where these would not be readable (grey and
+   orange on the light grey background are under 2:1). */
+
+/* Step indicator */
+.wizard-bar {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 6px;
+    padding-right: 6px;
+    padding-bottom: 6px;
+    padding-left: 6px;
+}
+
+.wizard-step {
+    align-items: center;
+    min-width: 52px;
+}
+
+.wizard-step__circle {
+    width: 24px;
+    height: 24px;
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgb(140, 140, 140);
+    border-right-color: rgb(140, 140, 140);
+    border-bottom-color: rgb(140, 140, 140);
+    border-left-color: rgb(140, 140, 140);
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
+    -unity-text-align: middle-center;
+    color: rgb(150, 150, 150);
+}
+
+.wizard-step__caption {
+    margin-top: 2px;
+    font-size: 10px;
+    color: rgb(150, 150, 150);
+    -unity-text-align: upper-center;
+}
+
+.wizard-step__connector {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 8px;
+    height: 1px;
+    margin-top: 12px;
+    margin-left: 2px;
+    margin-right: 2px;
+    background-color: rgb(140, 140, 140);
+}
+
+.wizard-step--current .wizard-step__circle {
+    background-color: rgb(0, 110, 245);
+    border-top-color: rgb(0, 110, 245);
+    border-right-color: rgb(0, 110, 245);
+    border-bottom-color: rgb(0, 110, 245);
+    border-left-color: rgb(0, 110, 245);
+    color: rgb(255, 255, 255);
+    -unity-font-style: bold;
+}
+
+.wizard-step--current .wizard-step__caption {
+    color: rgb(0, 110, 245);
+    -unity-font-style: bold;
+}
+
+.wizard-step--done .wizard-step__circle {
+    background-color: rgb(30, 130, 60);
+    border-top-color: rgb(30, 130, 60);
+    border-right-color: rgb(30, 130, 60);
+    border-bottom-color: rgb(30, 130, 60);
+    border-left-color: rgb(30, 130, 60);
+    color: rgb(255, 255, 255);
+}
+
+.wizard-step--failed .wizard-step__circle {
+    border-top-color: rgb(220, 70, 70);
+    border-right-color: rgb(220, 70, 70);
+    border-bottom-color: rgb(220, 70, 70);
+    border-left-color: rgb(220, 70, 70);
+    color: rgb(220, 70, 70);
+}
+
+.wizard-step--failed .wizard-step__caption {
+    color: rgb(220, 70, 70);
+}
+
+/* Step title, description and what to do first */
+.wizard-intro {
+    padding-top: 6px;
+    padding-right: 8px;
+    padding-bottom: 4px;
+    padding-left: 8px;
+}
+
+.wizard-intro__title {
+    font-size: 14px;
+    -unity-font-style: bold;
+    white-space: normal;
+    margin-left: 0;
+}
+
+.wizard-intro__description {
+    margin-top: 2px;
+    margin-left: 0;
+    white-space: normal;
+    color: rgb(150, 150, 150);
+}
+
+.wizard-intro__action {
+    align-self: flex-start;
+    margin-left: 0;
+    margin-top: 6px;
+}
+
+.wizard-intro__hint {
+    margin-top: 4px;
+    margin-left: 0;
+    white-space: normal;
+    color: rgb(230, 160, 40);
+}
+
+.wizard-loading {
+    padding-top: 12px;
+    padding-left: 8px;
+    color: rgb(150, 150, 150);
+}
+
+/* Connection and Done */
+.wizard-panel {
+    padding-top: 2px;
+    padding-right: 8px;
+    padding-bottom: 8px;
+    padding-left: 8px;
+}
+
+.wizard-panel__text {
+    white-space: normal;
+    margin-left: 0;
+    margin-bottom: 6px;
+}
+
+.wizard-panel__action {
+    align-self: flex-start;
+    margin-left: 0;
+}
+
+.wizard-panel__note {
+    white-space: normal;
+    margin-left: 0;
+    margin-top: 6px;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: rgb(150, 150, 150);
+}
+
+.wizard-panel__buttons {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.wizard-summary-row {
+    flex-direction: row;
+    justify-content: space-between;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(128, 128, 128, 0.25);
+}
+
+.wizard-summary-row__name {
+    margin-left: 0;
+}
+
+.wizard-summary-row__status {
+    -unity-text-align: middle-right;
+}
+
+.wizard-ok {
+    color: rgb(60, 160, 90);
+}
+
+.wizard-bad {
+    color: rgb(220, 70, 70);
+}
+
+.wizard-warn {
+    color: rgb(230, 160, 40);
+}
+
+.wizard-muted {
+    color: rgb(150, 150, 150);
+}
+
+/* Back, hint, Check again, Next: pinned between the content and the footer. */
+.wizard-nav {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    padding-top: 4px;
+    padding-right: 6px;
+    padding-bottom: 4px;
+    padding-left: 6px;
+    border-top-width: 1px;
+    border-top-color: rgba(0, 0, 0, 0.5);
+}
+
+.wizard-nav__hint {
+    flex-grow: 1;
+    flex-shrink: 1;
+    white-space: normal;
+    font-size: 11px;
+    color: rgb(230, 160, 40);
+    margin-left: 6px;
+    margin-right: 6px;
+}
+
+.wizard-nav__next {
+    min-width: 64px;
+}
+
+/* Step 3 (the SDK) and step 4 (the interpreter). Everything wraps and shrinks, so nothing reaches past a
+   400 px wide window: no row has a fixed width, and every label may break lines. */
+.wizard-panel__text,
+.wizard-panel__note,
+.wizard-intro__hint {
+    flex-shrink: 1;
+    min-width: 0;
+    white-space: normal;
+}
+
+.wizard-choices {
+    margin-top: 0;
+    margin-right: 0;
+    margin-bottom: 4px;
+    margin-left: 0;
+    padding-top: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+    border-top-width: 0;
+    border-right-width: 0;
+    border-bottom-width: 0;
+    border-left-width: 0;
+    background-color: rgba(0, 0, 0, 0);
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+/* The version list of "A previous release": under its radio button, as wide as the window allows. */
+.wizard-dropdown {
+    margin-left: 22px;
+    margin-right: 4px;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.wizard-dropdown .unity-base-popup-field__text {
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.wizard-check {
+    flex-shrink: 1;
+    min-width: 0;
+    margin-left: 0;
+}
+
+.wizard-check .unity-toggle__input,
+.wizard-check .unity-base-boolfield__input {
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.wizard-check Label {
+    white-space: normal;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+/* The one button of a step: as wide as the panel, its text may wrap. */
+.wizard-panel__primary {
+    align-self: stretch;
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: 6px;
+    margin-bottom: 4px;
+    min-height: 26px;
+    white-space: normal;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+/* Light skin: text at 4.5:1 or more on the light editor background (about rgb(200, 200, 200)). */
+.vd-skin-light .wizard-step__circle {
+    border-top-color: rgb(80, 80, 80);
+    border-right-color: rgb(80, 80, 80);
+    border-bottom-color: rgb(80, 80, 80);
+    border-left-color: rgb(80, 80, 80);
+    color: rgb(80, 80, 80);
+}
+
+.vd-skin-light .wizard-step__caption {
+    color: rgb(80, 80, 80);
+}
+
+.vd-skin-light .wizard-step__connector {
+    background-color: rgb(110, 110, 110);
+}
+
+.vd-skin-light .wizard-step--current .wizard-step__circle {
+    background-color: rgb(0, 110, 245);
+    border-top-color: rgb(0, 110, 245);
+    border-right-color: rgb(0, 110, 245);
+    border-bottom-color: rgb(0, 110, 245);
+    border-left-color: rgb(0, 110, 245);
+    color: rgb(255, 255, 255);
+}
+
+.vd-skin-light .wizard-step--current .wizard-step__caption {
+    color: rgb(0, 70, 180);
+}
+
+.vd-skin-light .wizard-step--done .wizard-step__circle {
+    background-color: rgb(30, 130, 60);
+    border-top-color: rgb(30, 130, 60);
+    border-right-color: rgb(30, 130, 60);
+    border-bottom-color: rgb(30, 130, 60);
+    border-left-color: rgb(30, 130, 60);
+    color: rgb(255, 255, 255);
+}
+
+.vd-skin-light .wizard-step--failed .wizard-step__circle {
+    border-top-color: rgb(160, 20, 20);
+    border-right-color: rgb(160, 20, 20);
+    border-bottom-color: rgb(160, 20, 20);
+    border-left-color: rgb(160, 20, 20);
+    color: rgb(160, 20, 20);
+}
+
+.vd-skin-light .wizard-step--failed .wizard-step__caption {
+    color: rgb(160, 20, 20);
+}
+
+.vd-skin-light .wizard-intro__description,
+.vd-skin-light .wizard-loading,
+.vd-skin-light .wizard-panel__note,
+.vd-skin-light .wizard-muted {
+    color: rgb(80, 80, 80);
+}
+
+.vd-skin-light .wizard-intro__hint,
+.vd-skin-light .wizard-nav__hint,
+.vd-skin-light .wizard-warn {
+    color: rgb(120, 60, 0);
+}
+
+.vd-skin-light .wizard-ok {
+    color: rgb(0, 90, 30);
+}
+
+.vd-skin-light .wizard-bad {
+    color: rgb(160, 20, 20);
+}

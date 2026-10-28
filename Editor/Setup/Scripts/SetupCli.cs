@@ -432,7 +432,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return ExitDone;
             }
 
-            CreatorKitSetupWindow.ApplyProjectSettings(asset);
+            bool inputHandlingChanged = CreatorKitSetupWindow.ApplyProjectSettings(asset);
 
             if (!ProjectSettingsConfigured(asset))
             {
@@ -440,7 +440,8 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return ExitProjectSettingsFailed;
             }
 
-            Debug.Log(log_prefix + "configure: URP, API compatibility .NET Framework and max texture size 1024 applied.");
+            Debug.Log(log_prefix + "configure: URP, API compatibility .NET Framework, Active Input Handling Both and max texture size 1024 applied." +
+                      (inputHandlingChanged ? " The input handling applies from the next editor launch." : string.Empty));
             return ExitDone;
         }
 
@@ -1000,6 +1001,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         private static bool ProjectSettingsConfigured(RenderPipelineAsset asset)
             => CreatorKitSetupWindow.IsRenderPipelineConfigured(asset)
                && CreatorKitSetupWindow.GetProjectSettingsStatus()
+               && CreatorKitSetupWindow.GetInputHandlingStatus()
                && CreatorKitSetupWindow.GetMaxTextureSizeOverride();
 
         /// <summary>
@@ -1166,6 +1168,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 modules = CreatorKitSetupWindow.GetInstalledModules(),
                 renderPipelineUrp = CreatorKitSetupWindow.IsRenderPipelineConfigured(asset),
                 apiCompatibilityNetFramework = CreatorKitSetupWindow.GetProjectSettingsStatus(),
+                inputHandlingBoth = CreatorKitSetupWindow.GetInputHandlingStatus(),
                 maxTextureSize1024 = CreatorKitSetupWindow.GetMaxTextureSizeOverride(),
                 recordedVersion = recorded,
                 sdkEnvironments = IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name),
@@ -1190,6 +1193,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             return report.renderPipelineUrp
                    && report.apiCompatibilityNetFramework
+                   && report.inputHandlingBoth
                    && report.maxTextureSize1024
                    && report.sdkEnvironments
                    && report.scriptsCompile
