@@ -41,8 +41,8 @@ load of an editor session picks the page by itself (a `SessionState` flag): the 
 set up. A 500 ms poll keeps the page shown honest (a login finished in the browser, a compile ended).
 
 - **Introduction** (`Wizard.cs`): optional; three rows, a back-up warning, "Don't show this introduction again".
-- **Connection** (`WizardConnection.cs`): the Back Office the file is downloaded from (`bo.virtuademy.io`, or another one saved as
-  `backOfficeUrl` in `setup.json`), one row per connection of the computer (tenant, environment, platform version, account or "not
+- **Connection** (`WizardConnection.cs`): **Open the Virtuademy Back Office** (`bo.virtuademy.io`, where the file is downloaded;
+  a note says that an organization with a Back Office of its own downloads it from there), one row per connection of the computer (tenant, environment, platform version, account or "not
   logged in", a warning when the app's `platform` is not `CreatorKit`) with Log in / Log out, and "Add an organization" (choose the
   file, import it, log in to the first connection it brought). It is optional at every point: **Connect later** is always there.
   The connections are the SDK's, kept in one store per user, and this package cannot reference the SDK, so `SetupConnections` calls

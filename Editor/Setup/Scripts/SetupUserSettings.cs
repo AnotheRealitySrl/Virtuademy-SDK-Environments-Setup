@@ -20,7 +20,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
     /// that a later key written by another version of the package survives.
     ///
     /// What it holds: whether the Readme and the wizard's introduction are shown when they would
-    /// open by themselves, the Back Office the Connection page opens, the connection action that
+    /// open by themselves, the connection action that
     /// waits for the SDK's connection support to be installed, and the packages that action
     /// installed (see <see cref="PreparedPackages"/>).
     /// </summary>
@@ -28,7 +28,6 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
     {
         private const string hide_readme_key = "hideReadmeOnStartup";
         private const string hide_introduction_key = "hideIntroduction";
-        private const string back_office_url_key = "backOfficeUrl";
         private const string pending_connection_key = "pendingConnection";
         private const string prepared_packages_key = "preparedPackages";
 
@@ -79,25 +78,6 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             {
                 JObject settings = Read(forWrite: true);
                 settings[hide_introduction_key] = value;
-                Write(settings);
-            }
-        }
-
-        /// <summary>The Back Office the Connection page opens, when it is not the default one; null otherwise.</summary>
-        internal static string BackOfficeUrl
-        {
-            get
-            {
-                JToken token = Read(forWrite: false)[back_office_url_key];
-                return token != null && token.Type == JTokenType.String && !string.IsNullOrWhiteSpace((string)token) ? (string)token : null;
-            }
-            set
-            {
-                JObject settings = Read(forWrite: true);
-                if (string.IsNullOrWhiteSpace(value))
-                    settings.Remove(back_office_url_key);
-                else
-                    settings[back_office_url_key] = value.Trim();
                 Write(settings);
             }
         }

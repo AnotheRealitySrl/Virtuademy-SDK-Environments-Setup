@@ -13,8 +13,8 @@ All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
   version and adds the details of the Summary. It is the long page's **Show pre-releases**, saved in the setup configuration
   asset. The whole page as before (nothing the window did is gone) has its own menu entry, **Virtuademy ▸ Advanced ▸ All setup
   checks**, with **Back to the guided setup** at its top: it is out of the wizard, which no longer offers it.
-  - **Connection** is optional at every point (**Connect later**). It opens the Back Office (`bo.virtuademy.io`, or another one you
-    type, saved per project and user), lists the connections of this computer (organization, environment, platform version,
+  - **Connection** is optional at every point (**Connect later**). It opens the Virtuademy Back Office (`bo.virtuademy.io`; a note
+    says that an organization with a Back Office of its own downloads the file from there: the page asks for no address), lists the connections of this computer (organization, environment, platform version,
     account, a warning when the app is not one environments can be published to) with **Log in** and **Log out**, and **Add an
     organization** imports the file from the Back Office and logs in. The connections are the SDK's, so the page reaches them
     through the SDK's `SetupBridge` by reflection (SDK 2026.7.0 on); without it the list is read from the SDK's status file and

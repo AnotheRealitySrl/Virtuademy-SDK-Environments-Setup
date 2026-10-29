@@ -14,7 +14,8 @@ using UnityEngine.UIElements;
 namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     /// <summary>
-    /// The Connection page: the Back Office to download the configuration file from, the connections this computer already holds
+    /// The Connection page: the Virtuademy Back Office, where the configuration file is downloaded (an organization with a Back Office of
+    /// its own downloads it from there, which the page says rather than asks for its address), the connections this computer already holds
     /// (one row each, with Log in and Log out), and "Add an organization" (choose the file, import it, log in). It is optional at
     /// every point: <b>Connect later</b> is always there, and nothing after it needs a connection.
     ///
@@ -27,9 +28,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
     /// </summary>
     public partial class CreatorKitSetupWindow
     {
-        private const string default_back_office_url = "https://bo.virtuademy.io";
-        private const string default_back_office_choice = "bo.virtuademy.io";
-        private const string other_back_office_choice = "Another Back Office...";
+        private const string back_office_url = "https://bo.virtuademy.io";
 
         internal const string sdk_core_package_name = "com.anotherealitysrl.virtuademy-sdk-core";
 
@@ -44,9 +43,6 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         [SerializeField] private bool connectionFromStatus;
         [SerializeField] private string connectionNote;
 
-        private DropdownField backOfficeDropdown;
-        private TextField backOfficeField;
-        private Button backOfficeOpenButton;
         private VisualElement connectionList;
         private Label connectionSupportLabel;
         private Button connectionManageLink;
@@ -76,25 +72,16 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             page.Add(MakeLabel("Connect your organization", "wizard-title"));
             page.Add(MakeLabel("You need it to publish. Your login is kept for all your projects on this computer.", "wizard-text"));
 
+            // The Back Office is only a link to open in the browser: the Virtuademy one, and a note for the organizations that have their own.
             page.Add(MakeLabel("Back Office", "wizard-heading"));
-            string savedUrl = SetupUserSettings.BackOfficeUrl;
-            backOfficeDropdown = new DropdownField(new List<string> { default_back_office_choice, other_back_office_choice }, savedUrl == null ? 0 : 1);
-            backOfficeDropdown.AddToClassList("wizard-field");
-            backOfficeDropdown.RegisterValueChangedCallback(_ => OnBackOfficeChanged());
-            page.Add(backOfficeDropdown);
-
-            backOfficeField = new TextField { isDelayed = true, tooltip = "The address of your Back Office, for example https://backoffice.example.com" };
-            backOfficeField.AddToClassList("wizard-field");
-            backOfficeField.SetValueWithoutNotify(savedUrl ?? string.Empty);
-            backOfficeField.RegisterValueChangedCallback(_ => OnBackOfficeChanged());
-            page.Add(backOfficeField);
-
             VisualElement buttons = new();
             buttons.AddToClassList("wizard-buttons");
-            backOfficeOpenButton = MakeButton("Open the Back Office", OpenBackOffice, "wizard-button");
+            Button backOfficeOpenButton = MakeButton("Open the Virtuademy Back Office", () => Application.OpenURL(back_office_url), "wizard-button");
+            backOfficeOpenButton.tooltip = back_office_url;
             buttons.Add(backOfficeOpenButton);
             page.Add(buttons);
-            page.Add(MakeLabel("The file is downloaded from a world's page: open the world and choose \"Download SDK Environments Config\".", "wizard-note"));
+            page.Add(MakeLabel("The file is downloaded from a world's page: open the world and choose \"Download SDK Environments Config\". " +
+                               "If your organization has a Back Office of its own, download the file from there, the same way.", "wizard-note"));
 
             page.Add(MakeLabel("Connections on this computer", "wizard-heading"));
             connectionSupportLabel = MakeLabel(string.Empty, "wizard-note");
@@ -115,46 +102,6 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             connectionNoteLabel = MakeLabel(string.Empty, "wizard-text");
             page.Add(connectionNoteLabel);
             return page;
-        }
-
-        #endregion
-
-        #region Back Office
-
-        private string ResolveBackOfficeUrl()
-        {
-            if (backOfficeDropdown.index == 0)
-                return default_back_office_url;
-
-            string typed = backOfficeField.value?.Trim();
-            if (string.IsNullOrEmpty(typed))
-                return null;
-
-            if (!typed.Contains("://"))
-                typed = "https://" + typed;
-
-            return Uri.TryCreate(typed, UriKind.Absolute, out Uri uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp) ? typed : null;
-        }
-
-        private void OnBackOfficeChanged()
-        {
-            // Saved per project and user, like the rest of the page's choices; the default Back Office is the absence of a saved one.
-            SetupUserSettings.BackOfficeUrl = backOfficeDropdown.index == 0 ? null : backOfficeField.value;
-            RefreshBackOffice();
-        }
-
-        private void RefreshBackOffice()
-        {
-            bool other = backOfficeDropdown.index == 1;
-            SetShown(backOfficeField, other);
-            backOfficeOpenButton.SetEnabled(ResolveBackOfficeUrl() != null);
-        }
-
-        private void OpenBackOffice()
-        {
-            string url = ResolveBackOfficeUrl();
-            if (url != null)
-                Application.OpenURL(url);
         }
 
         #endregion
@@ -245,8 +192,6 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             if (force || EditorApplication.timeSinceStartup - connectionsReadAt > connections_refresh_seconds)
                 ReadConnections();
-
-            RefreshBackOffice();
 
             ConnectionSupport support = GetConnectionSupport(out string supportMessage);
             if (connectionsError != null && support == ConnectionSupport.Ready)
