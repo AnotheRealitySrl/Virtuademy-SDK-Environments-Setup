@@ -9,92 +9,63 @@ using UnityEngine.UIElements;
 namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     /// <summary>
-    /// The window as a wizard: one step at a time, over the sections the window already has.
-    ///
-    /// Nothing here re-implements a check or an action. Every step shows a group of the long page
-    /// (the checks, the buttons and their bindings are the window's own) and the wizard only
-    /// decides which group is visible and whether Next is enabled, from the same
-    /// <see cref="projectConfig"/> and <see cref="packageManagerConfig"/> the page reads. The two
-    /// steps without a group on the page, Connection and Done, are built here. The long page stays
-    /// one toggle away (<c>Show all checks</c>, at the foot), unchanged.
+    /// The window as a wizard of five pages, over the long page: the frame, the navigation and the start page. The pages are in
+    /// <c>CreatorKitSetupWindow.WizardConnection.cs</c> (Connection), <c>WizardChoices.cs</c> (Choices), <c>WizardRun.cs</c> (Run) and
+    /// <c>WizardStatus.cs</c> (Project status); the Introduction is here.
+    /// <list type="bullet">
+    /// <item>Introduction, then Connection (it may be skipped: "Connect later"), then Choices (the Virtuademy version and how scripts are
+    /// written), then Summary (the choices, what the setup will do, what cannot be undone, and Start setup), then Run, then Project
+    /// status: the result of a run and the home of a project that is set up.</item>
+    /// <item>The pages only start the work and show it. The work is <see cref="SetupRun"/>'s (every step, across the domain reloads),
+    /// and the connections are the SDK's (<see cref="SetupConnections"/>). A page reads the same <see cref="projectConfig"/> and
+    /// <see cref="packageManagerConfig"/> as the long page; the checks are the window's own.</item>
+    /// <item><b>Development mode</b>, at the foot, is one switch for the whole setup: the development version in the lists, and the
+    /// details of the Summary. The long page as it always was is a menu entry of its own, <c>Virtuademy/Advanced/All setup checks</c>,
+    /// with <b>Back to the guided setup</b> at its top.</item>
+    /// </list>
     /// </summary>
     public partial class CreatorKitSetupWindow
     {
-        private const int step_computer = 0;
-        private const int step_project = 1;
-        private const int step_sdk = 2;
-        private const int step_scripts = 3;
-        private const int step_connection = 4;
-        private const int step_done = 5;
+        // The values are serialized (wizardPage): a new page goes at the end.
+        private enum WizardPage { Intro, Connection, Choices, Run, Status, Summary }
 
-        private static readonly (string caption, string title, string description)[] wizard_steps =
-        {
-            ("Computer", "Your computer",
-                "Git and the editor's build modules are required: fix what is red, then press Check again. The Unity version is only a warning."),
-            ("Project", "Your project",
-                "The render pipeline (URP) and the project settings the SDK expects. Configure changes project settings, so back the project up first; when it changes the input handling, it offers to restart the editor."),
-            ("SDK", "The SDK",
-                "Choose the Virtuademy version and install it. The other Virtuademy packages come with the SDK."),
-            ("Scripts", "C# scripts (optional)",
-                "The interpreter runs the C# you write for your environments."),
-            ("Connection", "Connection",
-                "Import the configuration file from the Back Office and log in, in the SDK's own window."),
-            ("Done", "Done", string.Empty),
-        };
+        // Once per editor session the window picks its page by itself (a project that is not set up opens the Introduction, a project that
+        // is set up opens its status), whatever page a window restored from the layout was on. Within the session the page is kept,
+        // because every package action ends in a domain reload that rebuilds the window.
+        private const string wizard_page_chosen_key = "Virtuademy.SDK.Environments.Setup.WizardPageChosenThisSession";
 
-        // Once per editor session the wizard opens on the first step that fails, whatever step a
-        // window restored from the layout was on. Within the session the step is kept, because every
-        // package action ends in a domain reload that rebuilds the window.
-        private const string wizard_step_chosen_key = "Virtuademy.SDK.Environments.Setup.WizardStepChosenThisSession";
+        private const string console_menu_path = "Window/General/Console";
 
         // Serialized: an EditorWindow keeps these across a domain reload.
-        [SerializeField] private int wizardStep = -1;
+        [SerializeField] private int wizardPage = -1;
         [SerializeField] private bool showAllChecks;
-        [SerializeField] private bool connectionConfirmed;
 
         private bool dataLoaded;
         private bool loadFailed;
         private bool wizardBuilt;
-        private bool? lastViewWasWizard;
 
-        // Elements of the long page that the wizard shows one by one.
+        // Elements of the long page that the wizard hides.
         private VisualElement settingsSection;
-        private VisualElement settingsHeader;
-        private VisualElement gitGroup;
-        private VisualElement editorGroup;
-        private VisualElement projectGroup;
-        private VisualElement interpreterGroup;
         private VisualElement packageSection;
         private readonly List<VisualElement> pageSeparators = new();
-        private readonly List<Foldout> pageFoldouts = new();
 
         // Elements the wizard adds.
-        private VisualElement wizardBar;
-        private VisualElement wizardIntro;
         private Label wizardLoading;
-        private VisualElement connectionPanel;
-        private VisualElement donePanel;
+        private VisualElement pageIntro;
+        private VisualElement pageConnection;
+        private VisualElement pageChoices;
+        private VisualElement pageSummary;
+        private VisualElement pageRun;
+        private VisualElement pageStatus;
         private VisualElement wizardNav;
-        private readonly List<(VisualElement item, Label circle)> stepItems = new();
-        private Label introTitle;
-        private Label introDescription;
-        private Label introHint;
-        private VisualElement sdkPanel;
-        private VisualElement scriptsPanel;
-        private Label connectionSteps;
-        private Label connectionNote;
-        private Button openConnectionButton;
-        private Label doneHeadline;
-        private Label doneComputer;
-        private Label doneProject;
-        private Label doneSdk;
-        private Label doneScripts;
-        private Label doneConnection;
-        private Button donePublishButton;
-        private Button backButton;
-        private Button checkAgainButton;
-        private Button nextButton;
+        private Button navBack;
         private Label navHint;
+        private Button navSecondary;
+        private Button navPrimary;
+        private Toggle developmentModeToggle;
+        private Button backToWizardButton;
+
+        private WizardPage Page => (WizardPage)Mathf.Clamp(wizardPage, 0, (int)WizardPage.Summary);
 
         private void SetupWizard()
         {
@@ -110,279 +81,366 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             settingsSection = root.Q<VisualElement>("project-settings");
             packageSection = root.Q<VisualElement>("package-manager");
-            // The outer group and the inner one share the name "project-settings".
-            settingsHeader = settingsSection.Q<Label>("Header");
-            gitGroup = root.Q<VisualElement>("git-installation");
-            editorGroup = root.Q<VisualElement>("editor-configuration");
-            projectGroup = FirstAncestorWithClass(root.Q<VisualElement>("project-settings-content"), "settings-group");
-            interpreterGroup = root.Q<VisualElement>("Interpreter-settings");
-
             pageSeparators.AddRange(content.Children().Where(child => child.name == "separator"));
-            foreach (string foldoutName in new[] { "git-installation-foldout", "editor-configuration-foldout", "project-settings-foldout", "Interpreter-settings-foldout" })
-                pageFoldouts.Add(root.Q<Foldout>(foldoutName));
 
             VisualElement header = root.Q<VisualElement>("window-header");
             int at = content.IndexOf(header) + 1;
 
-            wizardBar = BuildStepBar();
-            content.Insert(at++, wizardBar);
+            // The UI is new: a page's signature, carried across the domain reload with the window's other private fields, would
+            // tell it that its new, empty list is already drawn.
+            runSignature = null;
+            connectionsSignature = null;
+            summarySignature = null;
 
-            wizardIntro = BuildIntro();
-            content.Insert(at++, wizardIntro);
+            // The long page's way back to the wizard (it is opened from Virtuademy/Advanced/All setup checks).
+            backToWizardButton = MakeButton("Back to the guided setup", () => SetShowAllChecks(false), "wizard-link");
+            content.Insert(at++, backToWizardButton);
 
             wizardLoading = new Label("Checking your project...");
             wizardLoading.AddToClassList("wizard-loading");
             content.Insert(at++, wizardLoading);
 
-            sdkPanel = BuildSdkPanel();
-            content.Insert(at++, sdkPanel);
+            pageIntro = BuildIntroPage();
+            content.Insert(at++, pageIntro);
 
-            scriptsPanel = BuildScriptsPanel();
-            content.Insert(at++, scriptsPanel);
+            pageConnection = BuildConnectionPage();
+            content.Insert(at++, pageConnection);
 
-            connectionPanel = BuildConnectionPanel();
-            content.Insert(at++, connectionPanel);
+            pageChoices = BuildChoicesPage();
+            content.Insert(at++, pageChoices);
 
-            donePanel = BuildDonePanel();
-            content.Insert(at++, donePanel);
+            pageSummary = BuildSummaryPage();
+            content.Insert(at++, pageSummary);
+
+            pageRun = BuildRunPage();
+            content.Insert(at++, pageRun);
+
+            pageStatus = BuildStatusPage();
+            content.Insert(at++, pageStatus);
 
             VisualElement footer = root.Q<VisualElement>("window-footer");
             wizardNav = BuildNavigation();
             footer.parent.Insert(footer.parent.IndexOf(footer), wizardNav);
 
-            Toggle showAllToggle = new("Show all checks");
-            showAllToggle.AddToClassList("footer-startup-toggle");
-            showAllToggle.tooltip = "Shows the whole setup on one page, instead of one step at a time.";
-            showAllToggle.SetValueWithoutNotify(showAllChecks);
-            showAllToggle.RegisterValueChangedCallback(evt =>
-            {
-                showAllChecks = evt.newValue;
-                // The long page has its own version dropdown: take the choice from it again on the way back.
-                sdkChoiceMode = -1;
-                ApplyView();
-                RefreshWizard();
-            });
-            footer.Add(showAllToggle);
+            // One switch for the whole setup. It is the long page's "Show pre-releases", kept in the project's setup configuration,
+            // which an install of the development version turns on by itself.
+            developmentModeToggle = new Toggle("Development mode (internal testing)");
+            developmentModeToggle.AddToClassList("footer-startup-toggle");
+            developmentModeToggle.tooltip = "Shows the development version of Virtuademy, which is for internal testing, in the lists of the setup, and the details of the Summary. The same setting as Show pre-releases.";
+            developmentModeToggle.RegisterValueChangedCallback(evt => SetDevelopmentMode(evt.newValue));
+            footer.Add(developmentModeToggle);
+
+            SetupRun.Changed -= OnRunChanged;
+            SetupRun.Changed += OnRunChanged;
 
             wizardBuilt = true;
             ApplyView();
 
-            // The checks the wizard gates on are read from memory, but several of them change
-            // behind the window's back (a package resolves, a Check call finishes): a light poll
-            // keeps the indicator and Next honest without hooking every one.
-            root.schedule.Execute(RefreshWizard).Every(500);
+            // What the pages show changes behind the window's back (a package resolves, a login finishes in the browser, the editor
+            // finishes compiling): a light poll keeps them honest without hooking every event.
+            root.schedule.Execute(PollWizard).Every(500);
         }
 
-        #region Building the wizard
-
-        private static VisualElement FirstAncestorWithClass(VisualElement element, string className)
+        private void OnDisable()
         {
-            for (VisualElement ancestor = element?.parent; ancestor != null; ancestor = ancestor.parent)
-            {
-                if (ancestor.ClassListContains(className))
-                    return ancestor;
-            }
-
-            return null;
+            SetupRun.Changed -= OnRunChanged;
         }
 
-        private VisualElement BuildStepBar()
+        #region Helpers
+
+        private static Label MakeLabel(string text, params string[] classes)
         {
-            VisualElement bar = new() { name = "wizard-bar" };
-            bar.AddToClassList("wizard-bar");
+            Label label = new(text);
+            foreach (string className in classes)
+                label.AddToClassList(className);
+            return label;
+        }
 
-            for (int i = 0; i < wizard_steps.Length; i++)
+        private static Button MakeButton(string text, System.Action onClick, params string[] classes)
+        {
+            Button button = new(onClick) { text = text };
+            foreach (string className in classes)
+                button.AddToClassList(className);
+            return button;
+        }
+
+        private static VisualElement NewPage(string name)
+        {
+            VisualElement page = new() { name = name };
+            page.AddToClassList("wizard-page");
+            return page;
+        }
+
+        // Flex, not StyleKeyword.Null: on 6000.3 an element hidden once and then given back to its
+        // stylesheet with Null kept resolving to None, so going Back to a page showed nothing.
+        private static void SetShown(VisualElement element, bool shown)
+        {
+            if (element != null)
+                element.style.display = shown ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        private static void OpenConsole() => EditorApplication.ExecuteMenuItem(console_menu_path);
+
+        private enum RowState { None, Ok, Bad, Warn }
+
+        /// <summary>A row of a page: a status icon, a name with a line of detail under it, and a button. Built once and updated in place,
+        /// so a click is never lost to a row that was rebuilt under the pointer.</summary>
+        private sealed class RowView
+        {
+            internal readonly VisualElement Root = new();
+            private readonly VisualElement icon = new();
+            private readonly Label name = new();
+            private readonly Label chip = new();
+            private readonly Label detail = new();
+            private readonly Button button = new();
+            private System.Action onClick;
+
+            internal RowView(bool withIcon)
             {
-                VisualElement item = new();
-                item.AddToClassList("wizard-step");
+                Root.AddToClassList("wizard-row");
 
-                Label circle = new((i + 1).ToString());
-                circle.AddToClassList("wizard-step__circle");
-                item.Add(circle);
-
-                Label caption = new(wizard_steps[i].caption);
-                caption.AddToClassList("wizard-step__caption");
-                item.Add(caption);
-
-                bar.Add(item);
-                stepItems.Add((item, circle));
-
-                if (i < wizard_steps.Length - 1)
+                if (withIcon)
                 {
-                    VisualElement connector = new();
-                    connector.AddToClassList("wizard-step__connector");
-                    bar.Add(connector);
+                    icon.AddToClassList("wizard-icon");
+                    Root.Add(icon);
                 }
+
+                VisualElement main = new();
+                main.AddToClassList("wizard-row__main");
+                VisualElement title = new();
+                title.AddToClassList("wizard-row__title");
+                name.AddToClassList("wizard-row__name");
+                chip.AddToClassList("wizard-chip");
+                title.Add(name);
+                title.Add(chip);
+                detail.AddToClassList("wizard-row__detail");
+                main.Add(title);
+                main.Add(detail);
+                Root.Add(main);
+
+                button.AddToClassList("wizard-row__button");
+                button.clicked += () => onClick?.Invoke();
+                Root.Add(button);
             }
 
-            return bar;
-        }
-
-        private VisualElement BuildIntro()
-        {
-            VisualElement intro = new() { name = "wizard-intro" };
-            intro.AddToClassList("wizard-intro");
-
-            introTitle = new Label();
-            introTitle.AddToClassList("wizard-intro__title");
-            intro.Add(introTitle);
-
-            introDescription = new Label();
-            introDescription.AddToClassList("wizard-intro__description");
-            intro.Add(introDescription);
-
-            introHint = new Label();
-            introHint.AddToClassList("wizard-intro__hint");
-            intro.Add(introHint);
-            return intro;
-        }
-
-        private VisualElement BuildConnectionPanel()
-        {
-            VisualElement panel = new() { name = "wizard-connection" };
-            panel.AddToClassList("wizard-panel");
-
-            connectionSteps = new Label();
-            connectionSteps.AddToClassList("wizard-panel__text");
-            panel.Add(connectionSteps);
-
-            openConnectionButton = new Button(() => SdkWindowLinks.Open(SdkWindowLinks.FindConnectionWindow()));
-            openConnectionButton.AddToClassList("wizard-panel__action");
-            panel.Add(openConnectionButton);
-
-            connectionNote = new Label("This window cannot see whether you are logged in, so this step never blocks you.");
-            connectionNote.AddToClassList("wizard-panel__note");
-            panel.Add(connectionNote);
-
-            Toggle confirmed = new() { text = "I imported the file and logged in" };
-            confirmed.AddToClassList("wizard-check");
-            confirmed.SetValueWithoutNotify(connectionConfirmed);
-            confirmed.RegisterValueChangedCallback(evt =>
+            internal void Set(RowState state, string title, string detailText, string buttonText = null, bool buttonEnabled = true, System.Action click = null)
             {
-                connectionConfirmed = evt.newValue;
-                RefreshWizard();
-            });
-            panel.Add(confirmed);
-            return panel;
+                icon.EnableInClassList("wizard-icon--ok", state == RowState.Ok);
+                icon.EnableInClassList("wizard-icon--bad", state == RowState.Bad);
+                icon.EnableInClassList("wizard-icon--warn", state == RowState.Warn);
+
+                name.text = title;
+                detail.text = detailText ?? string.Empty;
+                SetShown(detail, !string.IsNullOrEmpty(detailText));
+                detail.EnableInClassList("wizard-bad", state == RowState.Bad);
+                detail.EnableInClassList("wizard-warn", state == RowState.Warn);
+
+                button.text = buttonText ?? string.Empty;
+                SetShown(button, !string.IsNullOrEmpty(buttonText));
+                button.SetEnabled(buttonEnabled);
+                onClick = click;
+                SetShown(chip, false);
+            }
+
+            /// <summary>A small coloured label after the title, after <see cref="Set"/>: <paramref name="modifier"/> picks the colour
+            /// (<c>wizard-chip--{modifier}</c>), null the neutral one.</summary>
+            internal void SetChip(string text, string modifier)
+            {
+                chip.text = text ?? string.Empty;
+                chip.EnableInClassList("wizard-chip--sandbox", modifier == "sandbox");
+                chip.EnableInClassList("wizard-chip--prep", modifier == "prep");
+                SetShown(chip, !string.IsNullOrEmpty(text));
+            }
         }
 
-        private VisualElement BuildDonePanel()
+        #endregion
+
+        #region Introduction
+
+        private VisualElement BuildIntroPage()
         {
-            VisualElement panel = new() { name = "wizard-done" };
-            panel.AddToClassList("wizard-panel");
+            VisualElement page = NewPage("wizard-intro");
+            page.Add(MakeLabel("Set up this project for Virtuademy", "wizard-title"));
 
-            doneHeadline = new Label();
-            doneHeadline.AddToClassList("wizard-panel__text");
-            panel.Add(doneHeadline);
+            page.Add(IntroRow("1", "Connect your organization", "Import the file from the Back Office and log in. You can do it later."));
+            page.Add(IntroRow("2", "Choose the version and scripting", "Which Virtuademy version, and whether you also write C# scripts."));
+            page.Add(IntroRow("3", "Start setup", "5 to 15 minutes. Unity restarts at the end only if a setting needs it, and only when you click Restart."));
 
-            doneComputer = SummaryRow(panel, wizard_steps[step_computer].caption);
-            doneProject = SummaryRow(panel, wizard_steps[step_project].caption);
-            doneSdk = SummaryRow(panel, wizard_steps[step_sdk].caption);
-            doneScripts = SummaryRow(panel, "C# scripts (optional)");
-            doneConnection = SummaryRow(panel, wizard_steps[step_connection].caption);
+            Label backup = MakeLabel("Back up or commit the project first: the setup changes project settings.", "wizard-text", "wizard-warn");
+            backup.style.marginTop = 8;
+            page.Add(backup);
+
+            Toggle hide = new("Don't show this introduction again") { tooltip = "Saved for this project and this user, in UserSettings/Virtuademy/setup.json." };
+            hide.AddToClassList("wizard-check");
+            hide.SetValueWithoutNotify(SetupUserSettings.HideIntroduction);
+            hide.RegisterValueChangedCallback(evt => SetupUserSettings.HideIntroduction = evt.newValue);
+            page.Add(hide);
 
             VisualElement buttons = new();
-            buttons.AddToClassList("wizard-panel__buttons");
+            buttons.AddToClassList("wizard-buttons");
+            buttons.Add(MakeButton("Get started", () => GoTo(WizardPage.Connection), "wizard-button", "wizard-primary"));
+            page.Add(buttons);
 
-            Button readme = new(ReadmeWindow.ShowWindow) { text = "Open the Readme" };
-            buttons.Add(readme);
-
-            Button documentation = new(() => Application.OpenURL(SdkWindowLinks.documentation_root_url))
-            {
-                text = "Open the documentation",
-                tooltip = SdkWindowLinks.documentation_root_url
-            };
-            buttons.Add(documentation);
-
-            donePublishButton = new Button(() => SdkWindowLinks.Open(SdkWindowLinks.FindPublishWindow())) { text = "Open the publish window" };
-            buttons.Add(donePublishButton);
-
-            panel.Add(buttons);
-            return panel;
+            return page;
         }
 
-        private static Label SummaryRow(VisualElement panel, string name)
+        private static VisualElement IntroRow(string number, string title, string text)
         {
             VisualElement row = new();
-            row.AddToClassList("wizard-summary-row");
+            row.AddToClassList("wizard-intro-row");
+            row.Add(MakeLabel(number, "wizard-intro-row__number"));
 
-            Label nameLabel = new(name);
-            nameLabel.AddToClassList("wizard-summary-row__name");
-            row.Add(nameLabel);
-
-            Label status = new();
-            status.AddToClassList("wizard-summary-row__status");
-            row.Add(status);
-
-            panel.Add(row);
-            return status;
+            VisualElement body = new();
+            body.AddToClassList("wizard-intro-row__body");
+            body.Add(MakeLabel(title, "wizard-intro-row__title"));
+            body.Add(MakeLabel(text, "wizard-note"));
+            row.Add(body);
+            return row;
         }
+
+        #endregion
+
+        #region Navigation
 
         private VisualElement BuildNavigation()
         {
             VisualElement nav = new() { name = "wizard-nav" };
             nav.AddToClassList("wizard-nav");
 
-            backButton = new Button(() => GoToStep(wizardStep - 1)) { text = "Back" };
-            nav.Add(backButton);
+            navBack = MakeButton("Back", OnNavBack, "wizard-nav__button");
+            nav.Add(navBack);
 
-            navHint = new Label();
-            navHint.AddToClassList("wizard-nav__hint");
+            navHint = MakeLabel(string.Empty, "wizard-nav__hint");
             nav.Add(navHint);
 
-            checkAgainButton = new Button(() =>
-            {
-                if (!isSetupping)
-                    SetupWindowData();
-            })
-            {
-                text = "Check again",
-                tooltip = "Reads the computer and the project again, as the refresh button of the Package manager does."
-            };
-            nav.Add(checkAgainButton);
+            navSecondary = MakeButton(string.Empty, OnNavSecondary, "wizard-nav__button");
+            nav.Add(navSecondary);
 
-            nextButton = new Button(() => GoToStep(wizardStep + 1)) { text = "Next" };
-            nextButton.AddToClassList("wizard-nav__next");
-            nav.Add(nextButton);
+            navPrimary = MakeButton(string.Empty, OnNavPrimary, "wizard-nav__button", "wizard-primary");
+            nav.Add(navPrimary);
             return nav;
+        }
+
+        /// <summary>Which buttons the bar under the page has, and what they say: it is the one place that knows the flow between the pages.</summary>
+        private void RefreshNav()
+        {
+            if (!wizardBuilt)
+                return;
+
+            bool shown = true;
+            bool back = false;
+            string secondary = null;
+            string primary = null;
+            bool primaryEnabled = true;
+            string hint = string.Empty;
+
+            switch (Page)
+            {
+                case WizardPage.Intro:
+                    shown = false;
+                    break;
+                case WizardPage.Connection:
+                    back = !connectionFromStatus;
+                    secondary = connectionFromStatus ? null : "Connect later";
+                    primary = connectionFromStatus ? "Done" : "Next";
+                    break;
+                case WizardPage.Choices:
+                    back = true;
+                    primary = "Next";
+                    hint = choicesStartBlock;
+                    primaryEnabled = string.IsNullOrEmpty(choicesStartBlock);
+                    break;
+                case WizardPage.Summary:
+                    back = true;
+                    primary = "Start setup";
+                    hint = summaryStartBlock;
+                    primaryEnabled = string.IsNullOrEmpty(summaryStartBlock);
+                    break;
+                case WizardPage.Run:
+                    shown = !SetupRun.IsRunning && RunHasFailed;
+                    back = true;
+                    primary = "Try again";
+                    break;
+                case WizardPage.Status:
+                    primary = "Run setup again";
+                    primaryEnabled = !SetupRun.IsRunning && !compiling;
+                    break;
+            }
+
+            SetShown(navBack, back);
+            SetShown(navSecondary, secondary != null);
+            navSecondary.text = secondary ?? string.Empty;
+            SetShown(navPrimary, primary != null);
+            navPrimary.text = primary ?? string.Empty;
+            navPrimary.SetEnabled(primaryEnabled);
+            navHint.text = hint ?? string.Empty;
+            SetShown(navHint, !string.IsNullOrEmpty(hint));
+
+            bool visible = shown && dataLoaded && !loadFailed && !showAllChecks;
+            SetShown(wizardNav, visible);
+
+        }
+
+        private void OnNavBack()
+        {
+            switch (Page)
+            {
+                case WizardPage.Connection:
+                    GoTo(WizardPage.Intro);
+                    break;
+                case WizardPage.Choices:
+                    GoTo(choicesChangeMode ? WizardPage.Status : WizardPage.Connection);
+                    break;
+                case WizardPage.Summary:
+                    GoTo(summaryFromStatus ? WizardPage.Status : WizardPage.Choices);
+                    break;
+                case WizardPage.Run:
+                    GoTo(runReturnPage == (int)WizardPage.Status ? WizardPage.Status : WizardPage.Choices);
+                    break;
+            }
+        }
+
+        private void OnNavSecondary()
+        {
+            // "Connect later": the same way on as Next, and nothing is asked of the person.
+            if (Page == WizardPage.Connection)
+                LeaveConnectionPage();
+        }
+
+        private void OnNavPrimary()
+        {
+            switch (Page)
+            {
+                case WizardPage.Connection:
+                    LeaveConnectionPage();
+                    break;
+                case WizardPage.Choices:
+                    OpenSummary(false);
+                    break;
+                case WizardPage.Summary:
+                    StartFromSummary();
+                    break;
+                case WizardPage.Run:
+                    TryRunAgain();
+                    break;
+                case WizardPage.Status:
+                    RunSetupAgain();
+                    break;
+            }
         }
 
         #endregion
 
         #region State
 
-        /// <summary>
-        /// Whether the checks of a step are green. Connection and Done have none, and Scripts is
-        /// optional, so a step the person may leave with nothing to show is always "ok" here.
-        /// </summary>
-        private bool StepOk(int step) => step switch
-        {
-            // The Unity version is not part of the gate: it is an exact compare with the registry's, so
-            // any other patch release would block Next on a step whose fix (another version) is on a
-            // later one. It is a warning on the step (see RefreshWizard), not a red item.
-            step_computer => projectConfig.IsGitInstalled && projectConfig.AllEditorModulesInstalled,
-            step_project => projectConfig.ProjectSettingsOk,
-            // Installed at the chosen version AND the project compiles: with the SDK in but a compile error,
-            // nothing after this step can work, and a green step would hide it.
-            step_sdk => sdkRegisteredSnapshot && !packageManagerConfig.DisplayedAndInstalledVersionsAreDifferent && ProjectCompiles,
-            _ => true,
-        };
-
-        // Read once per refresh (and per load): asking Package Manager several times per tick is waste.
+        // Read once per poll (and per load): asking Package Manager several times per tick is waste.
         private bool sdkRegisteredSnapshot;
-
-        private bool compileFailed;
         private bool compiling;
         private bool importing;
-
-        /// <summary>Scripts compiled, and nothing is compiling right now.</summary>
-        private bool ProjectCompiles => !compileFailed && !compiling;
 
         private void UpdateSdkSnapshot()
         {
             sdkRegisteredSnapshot = IsSdkRegistered();
-            // Polled with the rest, which also covers "after each compilation": the poll sees it end.
-            compileFailed = EditorUtility.scriptCompilationFailed;
             compiling = EditorApplication.isCompiling;
             importing = EditorApplication.isUpdating;
         }
@@ -390,18 +448,22 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         private static bool IsSdkRegistered()
             => UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().Any(p => p.name == sdk_environments_package_name);
 
-        /// <summary>The first of the three required steps that fails, or Done when none does. The
-        /// interpreter is left out on purpose, as in the startup check: it is optional, and whether it
-        /// is installed is read asynchronously, so at the first load it is not known yet.</summary>
-        private int FirstFailingStep()
-        {
-            for (int step = step_computer; step <= step_sdk; step++)
-            {
-                if (!StepOk(step))
-                    return step;
-            }
+        /// <summary>The version the project has installed: the one it records, once the SDK is in. Null for a project that has no SDK yet, whose
+        /// recorded version is only the window's default.</summary>
+        private string InstalledVersion()
+            => sdkRegisteredSnapshot && !string.IsNullOrEmpty(packageManagerConfig?.CurrentInstallationVersion) ? packageManagerConfig.CurrentInstallationVersion : null;
 
-            return step_done;
+        /// <summary>The page a window opens on: where the run is while one is going, the Introduction (or the Connection page, when the
+        /// person turned the Introduction off) for a project that is not set up, the status of one that is.</summary>
+        private WizardPage ChooseStartPage()
+        {
+            if (SetupRun.IsRunning)
+                return WizardPage.Run;
+
+            if (!sdkRegisteredSnapshot)
+                return SetupUserSettings.HideIntroduction ? WizardPage.Connection : WizardPage.Intro;
+
+            return WizardPage.Status;
         }
 
         /// <summary>Called after every successful load: the checks have values now.</summary>
@@ -409,57 +471,168 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         {
             dataLoaded = true;
             loadFailed = false;
+            cachedPlan = null;
             UpdateSdkSnapshot();
-            InitializeSdkChoice();
+            pendingConnection = SetupUserSettings.Pending;
 
-            if (wizardStep < 0 || wizardStep >= wizard_steps.Length || !SessionState.GetBool(wizard_step_chosen_key, false))
+            // The engine plans against this registry (the Unity version of an entry) instead of reading it again.
+            SetupSteps.UseRegistry(packageManagerConfig.AllVersionsPackageRegistry);
+
+            if (wizardPage < 0 || wizardPage > (int)WizardPage.Summary || !SessionState.GetBool(wizard_page_chosen_key, false))
             {
-                wizardStep = FirstFailingStep();
-                SessionState.SetBool(wizard_step_chosen_key, true);
+                wizardPage = (int)ChooseStartPage();
+                SessionState.SetBool(wizard_page_chosen_key, true);
             }
 
+            // Nothing to see on the Run page once the run is over and went well: its result is the status.
+            if (Page == WizardPage.Run && !SetupRun.IsRunning && !RunHasFailed)
+                wizardPage = (int)WizardPage.Status;
+
+            ReadConnections();
+            EnterPage(Page);
             ApplyView();
-            RefreshWizard();
+            RefreshNav();
         }
 
-        private void GoToStep(int step)
+        private void GoTo(WizardPage page)
         {
-            wizardStep = Mathf.Clamp(step, 0, wizard_steps.Length - 1);
-            showUpdateRoutineNote = false;
+            wizardPage = (int)page;
             root.Q<ScrollView>("ScrollView").scrollOffset = Vector2.zero;
+            EnterPage(page);
             ApplyView();
-            RefreshWizard();
+            RefreshNav();
         }
 
-        private void InstallSdkFromWizard()
+        private void EnterPage(WizardPage page)
         {
-            SelectedPackage(sdk_environments_package_name, out PackageDefinition sdk);
-            if (sdk != null)
-                InstallPackageWithDependencies(sdk);
+            switch (page)
+            {
+                case WizardPage.Connection:
+                    RefreshConnectionPage(true);
+                    break;
+                case WizardPage.Choices:
+                    RefreshChoicesPage();
+                    break;
+                case WizardPage.Summary:
+                    RefreshSummaryPage();
+                    break;
+                case WizardPage.Run:
+                    RefreshRunPage();
+                    break;
+                case WizardPage.Status:
+                    RefreshStatusPage(true);
+                    break;
+            }
         }
 
-        private void SelectedPackage(string name, out PackageDefinition package)
+        /// <summary>The long page (true) or the wizard. The long page's buttons would start work beside a run, so it is refused while one is going.</summary>
+        private void SetShowAllChecks(bool value)
         {
-            package = null;
-            packageManagerConfig?.SelectedVersion?.PackageDictionary.TryGetValue(name, out package);
+            if (value && SetupRun.IsRunning)
+            {
+                EditorUtility.DisplayDialog("All setup checks", "A setup run is going. The page of all checks is available when it ends.", "OK");
+                return;
+            }
+
+            showAllChecks = value;
+            ApplyView();
+            RefreshNav();
+        }
+
+        private bool DevelopmentMode => packageManagerConfig != null && packageManagerConfig.ShowPrereleases;
+
+        /// <summary>Turns development mode on or off for the whole setup: the version lists and the details of the Summary. Saved in the
+        /// project's setup configuration, so it outlasts the editor restart that ends a setup.</summary>
+        private void SetDevelopmentMode(bool value)
+        {
+            if (packageManagerConfig == null)
+            {
+                developmentModeToggle?.SetValueWithoutNotify(false);
+                return;
+            }
+
+            packageManagerConfig.ShowPrereleases = value;
+            EditorUtility.SetDirty(packageManagerConfig);
+            AssetDatabase.SaveAssetIfDirty(packageManagerConfig);
+            UpdateAvailableVersions();
+
+            ApplyView();
+
+            connectionsSignature = null;
+            switch (Page)
+            {
+                case WizardPage.Connection:
+                    RefreshConnectionPage(true);
+                    break;
+                case WizardPage.Choices:
+                    RefreshChoicesPage();
+                    break;
+                case WizardPage.Summary:
+                    RefreshSummaryPage();
+                    break;
+                case WizardPage.Status:
+                    RefreshStatusPage(true);
+                    break;
+            }
+        }
+
+        private void OnRunChanged()
+        {
+            if (!wizardBuilt || root == null || root.panel == null || !dataLoaded)
+                return;
+
+            if (Page == WizardPage.Run)
+                RefreshRunPage();
+            if (Page == WizardPage.Status)
+                RefreshStatusPage(true);
+            RefreshNav();
+
+            // The run changed the project: read it again, so the status shows what is true now.
+            if (runStartedHere && !SetupRun.IsRunning)
+            {
+                runStartedHere = false;
+                if (!isSetupping)
+                    SetupWindowData();
+            }
+        }
+
+        private void PollWizard()
+        {
+            if (!wizardBuilt || showAllChecks || !dataLoaded || loadFailed)
+                return;
+
+            UpdateSdkSnapshot();
+            ResumePendingConnection();
+
+            switch (Page)
+            {
+                case WizardPage.Connection:
+                    RefreshConnectionPage(false);
+                    break;
+                case WizardPage.Choices:
+                    RefreshChoicesPage();
+                    break;
+                case WizardPage.Summary:
+                    RefreshSummaryPage();
+                    break;
+                case WizardPage.Run:
+                    RefreshRunPage();
+                    break;
+                case WizardPage.Status:
+                    RefreshStatusPage(false);
+                    break;
+            }
+
+            RefreshNav();
         }
 
         #endregion
 
         #region View
 
-        // Flex, not StyleKeyword.Null: on 6000.3 an element hidden once and then given back to its
-        // stylesheet with Null kept resolving to None, so going Back to a step showed nothing.
-        private static void SetShown(VisualElement element, bool shown)
-        {
-            if (element != null)
-                element.style.display = shown ? DisplayStyle.Flex : DisplayStyle.None;
-        }
-
         /// <summary>
-        /// Which parts of the window are visible. In "show all checks" mode this is the page as it
-        /// always was: both sections, minus what the load error hides. In wizard mode it is the
-        /// bar, the intro, the navigation and the one group (or panel) of the current step.
+        /// Which parts of the window are visible. In "show all checks" mode this is the long page as it always was: both sections,
+        /// minus what the load error hides. Otherwise it is the page of the wizard, the bar under it, and none of the long page.
         /// </summary>
         private void ApplyView()
         {
@@ -467,181 +640,26 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return;
 
             bool ready = dataLoaded && !loadFailed;
+
+            developmentModeToggle.SetValueWithoutNotify(DevelopmentMode);
+            SetShown(backToWizardButton, showAllChecks);
+
             bool wizard = !showAllChecks;
 
-            SetShown(wizardBar, wizard && !loadFailed);
-            SetShown(wizardIntro, wizard && ready);
             SetShown(wizardLoading, wizard && !ready && !loadFailed);
-            SetShown(sdkPanel, wizard && ready && wizardStep == step_sdk);
-            SetShown(scriptsPanel, wizard && ready && wizardStep == step_scripts);
-            SetShown(connectionPanel, wizard && ready && wizardStep == step_connection);
-            SetShown(donePanel, wizard && ready && wizardStep == step_done);
-            SetShown(wizardNav, wizard && ready);
+            SetShown(pageIntro, wizard && ready && Page == WizardPage.Intro);
+            SetShown(pageConnection, wizard && ready && Page == WizardPage.Connection);
+            SetShown(pageChoices, wizard && ready && Page == WizardPage.Choices);
+            SetShown(pageSummary, wizard && ready && Page == WizardPage.Summary);
+            SetShown(pageRun, wizard && ready && Page == WizardPage.Run);
+            SetShown(pageStatus, wizard && ready && Page == WizardPage.Status);
 
-            if (!wizard)
-            {
-                SetShown(settingsSection, !loadFailed);
-                SetShown(packageSection, !loadFailed);
-                SetShown(settingsHeader, true);
-                SetShown(gitGroup, true);
-                SetShown(editorGroup, true);
-                SetShown(projectGroup, true);
-                SetShown(interpreterGroup, true);
-                pageSeparators.ForEach(separator => SetShown(separator, true));
+            // Both sections are the long page's: the wizard has its own pages.
+            SetShown(settingsSection, !wizard && !loadFailed);
+            SetShown(packageSection, !wizard && !loadFailed);
+            pageSeparators.ForEach(separator => SetShown(separator, !wizard));
 
-                // Back to how the page opens: groups collapsed, their warning icons showing.
-                if (lastViewWasWizard == true)
-                    pageFoldouts.ForEach(foldout => foldout.value = false);
-            }
-            else
-            {
-                // The SDK and Scripts steps are panels of their own (WizardSteps.cs): the Package manager block and
-                // the interpreter group stay on the long page.
-                SetShown(settingsSection, ready && (wizardStep == step_computer || wizardStep == step_project));
-                SetShown(packageSection, false);
-                // The step has its own title.
-                SetShown(settingsHeader, false);
-                SetShown(gitGroup, wizardStep == step_computer);
-                SetShown(editorGroup, wizardStep == step_computer);
-                SetShown(projectGroup, wizardStep == step_project);
-                SetShown(interpreterGroup, false);
-                pageSeparators.ForEach(separator => SetShown(separator, false));
-
-                // A step shows its checks, not a collapsed title.
-                if (lastViewWasWizard != true)
-                    pageFoldouts.ForEach(foldout => foldout.value = true);
-            }
-
-            lastViewWasWizard = wizard;
-        }
-
-        /// <summary>Brings the indicator, the intro, Next and the two panels in line with the checks.</summary>
-        private void RefreshWizard()
-        {
-            if (!wizardBuilt || showAllChecks || !dataLoaded || loadFailed)
-                return;
-
-            UpdateSdkSnapshot();
-            bool sdkRegistered = sdkRegisteredSnapshot;
-            bool versionsDiffer = packageManagerConfig.DisplayedAndInstalledVersionsAreDifferent;
-
-            for (int i = 0; i < stepItems.Count; i++)
-            {
-                VisualElement item = stepItems[i].item;
-                bool current = i == wizardStep;
-                bool passed = i < wizardStep;
-                item.EnableInClassList("wizard-step--current", current);
-                item.EnableInClassList("wizard-step--done", passed && StepOk(i));
-                item.EnableInClassList("wizard-step--failed", passed && !StepOk(i));
-            }
-
-            introTitle.text = $"Step {wizardStep + 1} of {wizard_steps.Length}: {wizard_steps[wizardStep].title}";
-            introDescription.text = wizard_steps[wizardStep].description;
-            SetShown(introDescription, !string.IsNullOrEmpty(introDescription.text));
-
-            string hint = string.Empty;
-            if (wizardStep == step_computer && !projectConfig.UnityVersionIsMatching)
-            {
-                // A warning, never a gate: see StepOk.
-                PackageRegistry entry = packageManagerConfig.CurrentVersion ?? packageManagerConfig.SelectedVersion;
-                hint = string.IsNullOrEmpty(entry?.RequiredUnityVersion)
-                    ? $"This is Unity {UnityVersion}, not the version this Virtuademy version requires. Install the required one from Unity Hub: a build made with another version may not match the player."
-                    : $"This is Unity {UnityVersion}, but Virtuademy {entry.ReflectisVersion} requires {entry.RequiredUnityVersion}. Install it from Unity Hub: a build made with another version may not match the player.";
-            }
-
-            introHint.text = hint;
-            SetShown(introHint, hint.Length > 0);
-
-            bool stepOk = StepOk(wizardStep);
-            backButton.SetEnabled(wizardStep > step_computer);
-            SetShown(checkAgainButton, wizardStep <= step_scripts);
-            // One load at a time: a second click while one runs would start another.
-            checkAgainButton.SetEnabled(!isSetupping);
-            SetShown(nextButton, wizardStep < step_done);
-            nextButton.SetEnabled(stepOk);
-            nextButton.text = wizardStep == step_scripts && !projectConfig.InterpreterReady ? "Skip" : "Next";
-            navHint.text = stepOk
-                ? string.Empty
-                : wizardStep == step_sdk
-                    ? "Install the SDK at the chosen version and let Unity compile it."
-                    : "Fix the red items, then press Check again.";
-
-            if (wizardStep == step_sdk)
-                RefreshSdkPanel(sdkRegistered);
-            else if (wizardStep == step_scripts)
-                RefreshScriptsPanel(sdkRegistered);
-            else if (wizardStep == step_connection)
-                RefreshConnectionPanel(sdkRegistered);
-            else if (wizardStep == step_done)
-                RefreshDonePanel(sdkRegistered, versionsDiffer);
-        }
-
-        private void RefreshConnectionPanel(bool sdkRegistered)
-        {
-            SdkWindowLink window = sdkRegistered ? SdkWindowLinks.FindConnectionWindow() : null;
-
-            if (window != null)
-            {
-                connectionSteps.text = window.Steps;
-                openConnectionButton.text = $"Open {window.Name}";
-            }
-            else
-            {
-                connectionSteps.text = sdkRegistered
-                    ? "The installed SDK has no window for connections yet. If Unity is still compiling, wait for it and look again."
-                    : "The SDK is not installed yet: install it in step 3 first.";
-                openConnectionButton.text = "Open the SDK window";
-            }
-
-            openConnectionButton.SetEnabled(window != null);
-        }
-
-        private void RefreshDonePanel(bool sdkRegistered, bool versionsDiffer)
-        {
-            bool computer = StepOk(step_computer);
-            bool project = StepOk(step_project);
-            bool sdk = StepOk(step_sdk);
-
-            doneHeadline.text = computer && project && sdk
-                ? "Your project is set up. The Readme has the first steps; when a scene is ready, publish it."
-                : "Some steps still need attention: go back to the ones marked in red.";
-
-            if (!computer)
-                SetStatus(doneComputer, "Needs attention", false);
-            else if (!projectConfig.UnityVersionIsMatching)
-                SetStatus(doneComputer, "Ready, but Unity is not the required version", null, warning: true);
-            else
-                SetStatus(doneComputer, "Ready", true);
-            SetStatus(doneProject, project ? "Ready" : "Needs attention", project);
-
-            string sdkText = !sdkRegistered
-                ? "Not installed"
-                : versionsDiffer
-                    ? "Installed, another version is selected"
-                    : !ProjectCompiles
-                        ? (compileFailed ? "Installed, but the project does not compile" : "Installed, Unity is compiling")
-                        : $"Installed, Virtuademy {packageManagerConfig.CurrentInstallationVersion}";
-            SetStatus(doneSdk, sdkText, sdk);
-
-            if (projectConfig.InterpreterReady)
-                SetStatus(doneScripts, "Ready", true);
-            else if (projectConfig.InterpreterNeedsFix)
-                SetStatus(doneScripts, "Installed, not ready to build", false);
-            else
-                SetStatus(doneScripts, "Not installed (optional)", null);
-
-            SetStatus(doneConnection, connectionConfirmed ? "Done, as you confirmed" : "Not confirmed", connectionConfirmed ? true : null);
-
-            donePublishButton.SetEnabled(sdkRegistered && SdkWindowLinks.FindPublishWindow() != null);
-        }
-
-        private static void SetStatus(Label label, string text, bool? ok, bool warning = false)
-        {
-            label.text = text;
-            label.EnableInClassList("wizard-ok", ok == true);
-            label.EnableInClassList("wizard-bad", ok == false);
-            label.EnableInClassList("wizard-warn", warning);
-            label.EnableInClassList("wizard-muted", ok == null && !warning);
+            RefreshNav();
         }
 
         #endregion

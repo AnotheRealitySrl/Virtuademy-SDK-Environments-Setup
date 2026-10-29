@@ -66,6 +66,17 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         // a remote that is down is asked once.
         private static readonly Dictionary<string, string> remote_commits = new();
 
+        /// <summary>
+        /// Forgets what <c>git ls-remote</c> answered earlier in this editor session, so that the next comparison asks the remotes
+        /// again. A check the person asked for ("Reload packages") must not be answered from what the last one saw. Not while a check
+        /// is running: its lookups are in flight, and it reads its answers from here when they are in.
+        /// </summary>
+        internal static void ForgetRemoteAnswers()
+        {
+            if (!PackageAutoUpdate.IsRunning)
+                remote_commits.Clear();
+        }
+
         internal static string LockFilePath => Path.Combine(Application.dataPath, "../Packages/packages-lock.json");
 
         /// <summary>

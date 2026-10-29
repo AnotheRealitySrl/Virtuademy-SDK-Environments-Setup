@@ -200,9 +200,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         /// <summary>
         /// Why the project needs this window, or null when it does not: SDK-Environments missing,
-        /// or one of the window's local checks failing. Left to the window: the Unity version,
-        /// which is compared against the registry and so needs the network, and the interpreter,
-        /// which a project may legitimately not have set up yet.
+        /// or one of the window's local checks failing (git, the editor modules, the project
+        /// settings, and, once the SDK is in, its Addressables configuration and TextMesh Pro's
+        /// Essential Resources: the checks of the status page). Left to the window: the Unity
+        /// version, which is compared against the registry and so needs the network, and the
+        /// interpreter, which a project may legitimately not have set up yet.
         /// </summary>
         internal static string FindStartupIssue()
         {
@@ -220,6 +222,12 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             if (!IsRenderPipelineConfigured(LoadDefaultRenderPipelineAsset()) || !GetProjectSettingsStatus() || !GetInputHandlingStatus() || !GetMaxTextureSizeOverride())
                 return "the project settings are not configured.";
 
+            if (SetupSteps.ReadAddressablesConfigured() == false)
+                return "the Addressables are not configured.";
+
+            if (SetupSteps.TmpEssentialsMissing())
+                return "TextMesh Pro's Essential Resources are missing.";
+
             return null;
         }
 
@@ -229,15 +237,32 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             => AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(AssetDatabase.GUIDToAssetPath(render_pipeline_asset_guid));
 
         /// <summary>
-        /// Opens the setup window (a wizard unless the person turned on "Show all checks"). It
-        /// picks its step by itself: the first one whose checks fail, once per editor session. See
-        /// <c>CreatorKitSetupWindow.Wizard.cs</c>.
+        /// Opens the setup window on the pages of the wizard. It picks its page by itself, once per
+        /// editor session: the Introduction for a project that is not set up, the project status for
+        /// one that is. See <c>CreatorKitSetupWindow.Wizard.cs</c>.
         /// </summary>
-        [MenuItem("Virtuademy/Setup project")]
+        // First in the Virtuademy menu, then Publish Environments (the SDK's, 1) and the Readme (2); after them the SDK's Update routines
+        // (20-22) and Advanced (40-43). Unity draws a separator before a submenu whose priority is more than 10 above the previous
+        // item, and none before an item that follows a submenu: so the items come first and the submenus after.
+        [MenuItem("Virtuademy/Setup project", false, 0)]
         public static void ShowWindow()
         {
             CreatorKitSetupWindow wnd = GetWindow<CreatorKitSetupWindow>();
             wnd.titleContent = new GUIContent("Setup project");
+            wnd.SetShowAllChecks(false);
+        }
+
+        /// <summary>
+        /// Opens the setup window on the long page: every check and every action on one page, as
+        /// before the wizard, for those who want to drive each step by hand. Not while a setup run
+        /// is going.
+        /// </summary>
+        [MenuItem("Virtuademy/Advanced/All setup checks", false, 40)]
+        public static void ShowAllChecksWindow()
+        {
+            CreatorKitSetupWindow wnd = GetWindow<CreatorKitSetupWindow>();
+            wnd.titleContent = new GUIContent("Setup project");
+            wnd.SetShowAllChecks(true);
         }
 
         public void CreateGUI()
@@ -697,7 +722,13 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             showPrereleaseToggle.RegisterValueChangedCallback(evt =>
             {
                 // Written here as well as by the binding, so the list is filtered on the new value
-                // whichever of the two runs first.
+                // whichever of the two runs first. It is the wizard's Development mode too.
+                if (wizardBuilt)
+                {
+                    SetDevelopmentMode(evt.newValue);
+                    return;
+                }
+
                 packageManagerConfig.ShowPrereleases = evt.newValue;
                 UpdateAvailableVersions();
             });
@@ -1109,6 +1140,14 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             return property == null || property.intValue == active_input_handler_both;
         }
 
+        // Set when Active Input Handling was changed in this editor session. SessionState survives the domain
+        // reloads and not a restart, which is exactly when the setting starts to apply: whatever ran since (another
+        // setup run, a Fix) the editor still has to restart once.
+        private const string input_handling_changed_key = "Virtuademy.SDK.Environments.Setup.InputHandlingChanged";
+
+        /// <summary>Active Input Handling was changed in this editor session, so the editor has to restart for it to apply.</summary>
+        internal static bool InputHandlingChangedThisSession => SessionState.GetBool(input_handling_changed_key, false);
+
         /// <summary>Sets Active Input Handling to Both. True when it changed: Unity applies it when the editor
         /// starts again.</summary>
         private static bool ApplyInputHandling()
@@ -1119,6 +1158,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             property.intValue = active_input_handler_both;
             playerSettings.ApplyModifiedPropertiesWithoutUndo();
+            SessionState.SetBool(input_handling_changed_key, true);
             return true;
         }
 

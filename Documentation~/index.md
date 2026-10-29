@@ -40,9 +40,10 @@ Unity picks up the folder as an embedded package on the next refresh.
 
 When you open the project, the setup window opens by itself **only if something needs doing**:
 Virtuademy-SDK-Environments is not installed yet, git cannot be run, an editor module is missing,
-or the project settings below are not configured. The Console says which. A project that is set up
-opens the Readme instead (see below), and if you close a window, it stays closed until the editor is restarted. You can
-always open the setup window from **Virtuademy ▸ Setup project**.
+the project settings below are not configured, the Addressables are not configured, or TextMesh Pro's Essential
+Resources are missing. The Console says which. A project that has nothing to fix opens the Readme instead (see below), and if
+you close a window, it stays closed until the editor is restarted. You can always open the setup window from **Virtuademy ▸
+Setup project**. A project that is not set up yet opens its introduction; one that is set up opens its status.
 
 To stop it opening by itself, clear **Open this window when the project opens and needs setup** at
 the foot of the window. The choice is saved for this project on this machine.
@@ -59,22 +60,84 @@ of the window; the choice is saved for this project on this machine.
 
 ### The wizard
 
-The window shows one step at a time, with the steps listed under the logo, and **Back** and **Next**
-at the bottom. **Next** is enabled when the checks of the step are green; **Check again** reads the
-computer and the project again (use it after installing git or a module). The window opens on the first
-step that fails.
+The window has six pages, one at a time, with **Back** and the main action in a bar at the bottom. A project that is not set up
+starts at the first, a project that is set up at the last.
 
-| Step | What it shows |
+| Page | What it does |
 |---|---|
-| **1. Computer** | The Git installation and the Editor configuration groups below: git, the Unity version, the editor modules. Next needs git and the modules; a Unity version other than the one required shows as a warning that names it, and does not stop you. |
-| **2. Project** | The Project settings group below: URP, the API compatibility level, Active Input Handling, the max texture size. **Configure** applies them, and offers to restart the editor when it changes the input handling. |
-| **3. SDK** | Choose the version: **Latest release** (the default), **A previous release** (a list, newest first) or, when **Show the development version** is ticked, the development version (unreleased, for internal testing). One button does it, and says what it will do: **Install**, **Update to** or **Change to** the version; it reads **Installed** when that version is already in. It is disabled, with the reason, when the version needs another Unity than the open editor. After an update, run the update routine the release notes name, from **Virtuademy ▸ Update routines**. Next is enabled once the SDK is installed at the chosen version **and the project compiles**; if it does not, the step says so and **Open the Console** shows the errors. The Package manager section below holds the same install and update, per package, on the full page. |
-| **4. C# scripts** | The interpreter's state and its button: **Install interpreter**, **Fix the interpreter**, or **Ready**. It says why it cannot run yet when the SDK is missing or the project does not compile. Optional: **Skip** if you only use Visual Scripting. |
-| **5. Connection** | Opens the SDK's own window to import the configuration file you downloaded from the Back Office and to log in: **Publish Environments** from SDK 2026.7.0, **Available Tenants** or **Addressables management** in earlier versions. The setup cannot see whether you logged in, so this step never blocks you; tick the box when you have. |
-| **6. Done** | A summary of the steps, and buttons for the Readme, the documentation and the publish window. |
+| **Introduction** | What the setup does in three steps, and a reminder to back up or commit the project first, because the setup changes project settings. Tick **Don't show this introduction again** to skip it (saved for this project and this user). **Get started** goes on. |
+| **Connection** | Connect your organization, which you need to publish. Your login is kept for all your projects on this computer. Choose the Back Office (`bo.virtuademy.io`, or **Another Back Office...** with its address) and press **Open the Back Office**: the configuration file is downloaded from a world's page with **Download SDK Environments Config**. The page lists the connections of this computer, each with its organization, environment, platform version and account, and **Log in** or **Log out**; a warning says when a connection's app is not one environments can be published to. **Add an organization** imports the file and logs in. On a project that does not have the SDK yet, **Choose the file...** and **Log in** first offer to install the part of the SDK that holds the connections, which takes about a minute; then the file picker, or the login, opens by itself. A connection shows its organization alone; a sandbox or prep one carries a coloured chip (Sandbox, Prep). Connections need Virtuademy 2026.7 or later: while only the development version has them for your Unity, the page says so, and adding an organization or logging in needs **Development mode** (see below). This page is optional: **Connect later** goes on without it, and nothing after it needs a connection. To remove a connection, use **Manage in Publish Environments**. |
+| **Choices** | **Virtuademy version**: the one your organization runs is the default and is marked *recommended* (when your connections agree on one and the list has it), else the latest release; the development version shows only in **Development mode**. Under it, which Unity the version needs: it blocks the start when the open editor is another. For a project that has the SDK, a note says whether this is an upgrade or a downgrade; a downgrade needs the tick **I committed or backed up the project**. **Scripting**: *Visual Scripting only*, or *Visual Scripting and C# scripts*, which also installs the interpreter (about 5 minutes more, needs git). On a project that has the interpreter, *Visual Scripting only* removes it, and the page says so in orange. **Next** opens the summary. |
+| **Summary** | "Ready to set up": your choices (the version, and whether it is an update, a downgrade or already installed; the scripting), what the setup will do, and, when there is any, what cannot be undone from the window (see *Before a run starts* below). **This computer** (git and the editor build modules) shows only when something is missing, and blocks the start until **Check again** finds it. **Start setup** begins. In development mode the page also shows each step's detail, what is already done or not needed, the computer's checks that pass, and the Unity the version needs. |
+| **Run** | "Setting up your project": the step you are at, the percentage, a progress bar and the list of steps with what each did. Unity reloads a few times: keep the editor open. Before the two long steps that block the editor (the interpreter and the Visual Scripting nodes) it says Unity may not respond for a minute or two. **Stop after this step** ends the run when the step in progress is done. A run that ends well goes to the status; one that fails stays, with the reason on the step, and **Try again** repeats it: it only does what is left. |
+| **Project status** | The result of a run, and the home of a project that is set up: "Your project is ready", or how many things need attention. A card shows, for each, the name in bold and the value beside it: **Virtuademy version** (**Change version** opens the Choices page), **Packages** (**Reload packages** asks the remote of each Virtuademy git package whether its commit moved, compares commits and not versions, reloads the ones that did, and says what it did, or *All up to date*), **Scripting** (**Add C# scripts** or **Remove C# scripts**: both open the summary at the installed version, which says what the change does and, when C# scripts would stop running, asks for the tick first), **Connections** (**Manage** opens the Connection page). Under it, the checks that fail, under *Needs attention*, each with **Fix**; development mode shows all of them, under *Checks*: this computer, project settings (URP, API compatibility, Active Input Handling, max texture size), Addressables (a single default group: **Fix** removes every other group and every entry, and asks first), TextMesh Pro's Essential Resources, the interpreter when installed. When Active Input Handling was changed, **Restart now** restarts the editor once to turn it on; it stays on the page until the editor has restarted, whatever ran in between (another run, a **Fix**), and the project is only "ready" after it. **Run setup again** opens the summary of the whole setup at the installed version, and starts it from there. |
 
-**Show all checks** at the foot of the window shows everything on one page instead, as described
-below. Nothing in the wizard is missing from that page.
+**Development mode (internal testing)**, at the foot of the window, is one switch for the whole setup. It shows the development version
+of Virtuademy, which points at work in progress, in the lists of the setup, and the details of the summary. It is the same setting as
+**Show pre-releases** on the full page, it is saved in the project's setup configuration, and installing the development version turns
+it on by itself.
+
+**Virtuademy ▸ Advanced ▸ All setup checks** opens the window on the full page instead, every check and every action on one page, as
+described below: it is for those who want to drive each step by hand, and nothing the wizard does is missing from it. **Back to the
+guided setup**, at its top, returns to the wizard, and so does **Virtuademy ▸ Setup project**. It is not available while a setup run is
+going (the buttons of the full page would start work beside the run).
+
+### The setup run
+
+Behind the wizard there is one engine that does every step of the setup by itself, in this order, and skips
+the ones that have nothing to do (the Console and the step's detail say why): **project settings**, the **Virtuademy
+packages** at the version you chose (installed, updated or changed; a version older than the installed one is
+refused until you confirm the downgrade, and so is one that needs another Unity), **compile** (it waits until
+Unity has compiled, and stops with a pointer to the Console when the scripts do not), the **update routines** when the
+new version has one for the step you moved across, the **interpreter** (installed when you write C# scripts, removed when you chose
+*Visual Scripting only* on a project that has it), the **Addressables**
+configuration, the **Visual Scripting nodes**, TextMesh Pro's **Essential Resources** when they are missing, a look at
+the **connections** of this computer (it only reads them; it never fails the run), and last the **editor restart**,
+when Active Input Handling was changed. The restart is never automatic: you press **Restart now**. It is the very last step: it comes after every package install and
+recompilation, and after it the status page shows no check in red. Whether it is due belongs to the editor session, not to a run: a change
+of Active Input Handling made by any run (or by the full page) keeps **Restart now** on the status page until the editor has restarted.
+
+#### Before a run starts
+
+The summary is the confirmation: before **Start setup**, it lists under *Cannot be undone from here* what this run will really do of
+these, and nothing when there is none:
+
+- **Move Virtuademy from one version to another** (a change or a downgrade): the Virtuademy packages that the new version does not list are
+  removed from the project.
+- **Run the update routines** of the new version: they rename and rewrite scripts, graphs and assets of the project, and close the open
+  scenes. If a scene has changes that are not saved, a second dialog, just before the routines, lists those scenes and offers three
+  choices: **Save and continue**; **Continue without saving**, which loses those changes for good and reopens the scenes as they are on
+  disk (an untitled scene is closed); **Stop the setup**, which ends the run before the routines change anything.
+- **Remove the interpreter for C# scripts**, when you chose *Visual Scripting only* on a project that has it. The C# scripts in
+  `Assets/VirtuademyEnvironmentScripts` stay in the project but no longer run in Virtuademy. When the project has some, the summary also
+  shows a red box, *Your C# scripts will stop working*, with the number of scripts, and **Start setup** waits for the tick **I understand
+  that my C# scripts will no longer run** (asked again each time the summary opens). Choose *Visual Scripting and C# scripts* to keep
+  them.
+- **Reset the Addressables**: every group other than the SDK's single default group, and every entry in the groups, is removed. This only
+  happens when the project's Addressables are not configured as the SDK expects; a configured project is left as it is.
+
+**Try again** repeats what was confirmed, and each **Fix** that resets something asks for itself.
+The Visual Scripting nodes step does not need a confirmation: it only adds the SDK's types to the node library, and keeps the ones you added by
+hand (it does nothing when the library has the SDK's types already). A project that has Virtuademy packages from before 2026.6 (other package ids, no
+`com.anotherealitysrl.virtuademy-sdk-environments`) is not touched at all: the **Virtuademy SDK packages** step fails up front, before any step runs, and points
+to *Updating from an older platform version* below.
+
+The run survives the recompilations and domain reloads that installing packages causes: it carries on by itself and
+keeps its state in `UserSettings/Virtuademy/setup-run.json`. If the editor is closed in the middle of a step, the next
+session shows that step as failed; run the setup again, it only does what is left. The Visual Scripting nodes step
+takes over a minute and the interpreter step can take a few minutes, and Unity does not respond while they run.
+
+The command line (below) runs this same engine with `-vdSetupSteps run`, and its single steps call the same code for each step. Only a
+few messages differ: they say what to do next, and the single steps' talk about launching again and the `-vdSetup...` arguments, the
+run's about the wizard.
+
+**What is kept per project and user** (`UserSettings/Virtuademy/`, not versioned): `setup-run.json` is the last run, and is ignored when
+its `Format` is not one this version of the installer writes. `setup.json` holds the choices of the pages: `hideReadmeOnStartup`,
+`hideIntroduction`, `backOfficeUrl`, `pendingConnection` (a login, or the choice of a configuration file, that waits for the SDK's
+connection support to be installed, which expires after 30 minutes) and `preparedPackages`: the packages the Connection page installed
+(SDK-Core and what it needs) before the SDK itself. The run does not take them for a project that is at another version, and clears the list once it has
+installed the SDK. The Connection page saves its pending action only after it has written `Packages/manifest.json`, and gives up with a
+message when Unity's Package Manager does not resolve SDK-Core after a minute.
 
 ### The Readme
 
@@ -131,7 +194,8 @@ compile, fix the compilation errors shown in the Console and press it again.
 
 - **Show pre-releases** — adds test versions to the list. They point at work in progress and can
   change under you; use them only when asked to. Turning it off while a test version is selected
-  switches back to the installed version.
+  switches back to the installed version. It is the wizard's **Development mode**: turning it off
+  also goes back to the wizard.
 - **Resolve breaking changes automatically when updating version** — after an update, downloads
   the conversion script for that version step into `Assets/Virtuademy/Editor/Scripts/`. The script
   adds a menu entry; run it from there once Unity has recompiled. It only covers a step of one
@@ -155,10 +219,40 @@ computer is reinstalled for the new HybridCLR after Unity recompiles.
 
 ### From the command line
 
+The setup also runs without the window, for a build machine, a fresh clone or an assistant. Close the editor on the project
+first.
+
+**The whole setup in one launch.** `-vdSetupSteps run` does what **Start setup** does, with the same engine and the same steps
+(see *The setup run* above):
+
+```
+Unity -batchmode -nographics -projectPath <your project> -logFile - -ignoreCompilerErrors
+      -executeMethod Virtuademy.SDK.Environments.Setup.Editor.SetupCli.Run
+      -vdSetupSteps run -vdSetupVersion <version> -vdSetupScripting vs
+```
+
+- `<version>` is a version as the wizard's list shows it, for example `2026.6.0`, or `develop` for the development version.
+- `-vdSetupScripting` is the wizard's *Scripting* choice, and is required: `vs` for Visual Scripting only, `csharp` for Visual
+  Scripting and C# scripts (it installs the interpreter). `vs` on a project that has the interpreter removes it.
+- The confirmations of the summary are options. Without the one a run needs, nothing is changed and the command exits with `21`:
+  - `-vdAllowDowngrade`: go back to a version older than the installed one;
+  - `-vdAllowScriptRemoval`: remove the interpreter from a project that has C# scripts in `Assets/VirtuademyEnvironmentScripts`
+    (they stay, and no longer run in Virtuademy).
+- The editor stays open across the reloads of the run and exits by itself when the run ends, so one launch is enough. Do not add
+  `-quit`: it would close the editor before the run ends, and the command refuses it. Keep `-ignoreCompilerErrors`: after an update,
+  the project's scripts may not compile until the update routines have run.
+- The log ends with a `[SetupCli] RUN` line (each step with its state and what it did, the step that failed, and `restartPending`
+  when Active Input Handling changed: it applies from the next launch of the editor), the `[SetupCli] REPORT` line and the exit code:
+  `0` when every step is done or not needed, `23` when a step failed (the `RUN` line names it and says why).
+
+`-vdSetupSteps plan`, with the same options, changes nothing: it logs what the run would do as one `[SetupCli] PLAN` line (each step
+with its state and detail, what cannot be undone, the confirmations missing as `confirmationsNeeded`, and `startable`) and exits with
+the code the run would stop with, `0` when it would start.
+
+**One step at a time.** Without `run`, the command runs steps one round per launch.
 **Configure**, **Install** of Virtuademy SDK Environments, **Install interpreter** and a smarter
-**Re-resolve packages from git** also run without the window, for a build machine or a fresh
-clone, and so does the Addressables configuration that the SDK's Addressables management window
-applies with **Fix Addressables configurations**. Close the editor first, then run:
+**Re-resolve packages from git** run by default, and so does the Addressables configuration that the SDK's Addressables management window
+applies with **Fix Addressables configurations**:
 
 ```
 Unity -batchmode -nographics -projectPath <your project> -logFile -
@@ -166,8 +260,7 @@ Unity -batchmode -nographics -projectPath <your project> -logFile -
       -vdSetupVersion <version>
 ```
 
-`<version>` is a version as the window's list shows it, for example `2026.6.0`, or `develop` for
-the pre-release. The command has to be run again until it exits with `0`. Exit code `2` means "the
+The command has to be run again until it exits with `0`. Exit code `2` means "the
 project changed, run again", and a new project takes three runs. The last run also configures
 Addressables: it gives the project the SDK's Addressables profile and resets the Addressables
 groups to the single default group, removing every other group and every entry, as the window's
@@ -176,22 +269,27 @@ Virtuademy git packages whose tag or branch has moved since the project pinned t
 needed for that, so it exits with `2` too), and does nothing when none moved. Any other code is an
 error, named in the log. On a fresh clone of a project that is already set up, the same command skips the
 packages, which arrive with the clone. It redoes the two things stored per machine: the max
-texture size override and the interpreter inside the local IL2CPP. `-vdSetupSteps check` changes
-nothing and exits with `0` only when the project is set up.
+texture size override and the interpreter inside the local IL2CPP. With `-vdSetupScripting vs`
+the interpreter step removes the interpreter instead (with `-vdAllowScriptRemoval` when the project
+has C# scripts). `-vdSetupSteps check` changes nothing and exits with `0` only when the project is
+set up, counting what the status page counts, TextMesh Pro's Essential Resources included.
 
-Two things run only when you ask for them, with `-vdSetupSteps`:
+Three things run only when you ask for them, with `-vdSetupSteps`:
 
 - **Update packages to selected version**, as `-vdSetupSteps update -vdSetupVersion <version>`.
   It does what the button does: it installs what the new version adds, **removes what it does not
-  list**, and moves HybridCLR with the version. The first run changes the project and exits with
+  list**, and moves HybridCLR with the version. Going back to an older version needs
+  `-vdAllowDowngrade`. The first run changes the project and exits with
   `2`, the second one finishes and exits with `0`. When the move crosses a version that has an
   update routine, the log says so and names it, for example **Virtuademy ▸ Update routines ▸
-  v2026.5 -> v2026.6**: run it next, from the menu, after backing up the project. The command
-  line does not run it.
-- **Update VS Library** (**Virtuademy ▸ Update VS Library**), as `-vdSetupSteps vslibrary`, once
+  v2026.5 -> v2026.6**: run it next, from the menu, after backing up the project. This step does
+  not run it; `run` does.
+- **Update Visual Scripting library** (**Virtuademy ▸ Advanced ▸ Update Visual Scripting library**; **Virtuademy ▸ Update VS Library** before 2026.7), as `-vdSetupSteps vslibrary`, once
   Virtuademy SDK Environments is installed. It adds the Virtuademy nodes to the Visual Scripting
-  node library. It takes more than a minute and cannot tell that it has already run, which is why
-  it is not part of the default steps.
+  node library, and does nothing when the library has them already. It takes more than a minute
+  when it works, which is why it is not part of the default steps.
+- **TextMesh Pro's Essential Resources**, as `-vdSetupSteps tmp`, when they are missing. The import
+  ends after the launch's method returns, so the editor stays open until it is done: do not add `-quit`.
 
 ## What the installer writes to your project
 
@@ -208,6 +306,12 @@ Two things run only when you ask for them, with `-vdSetupSteps`:
   resolution is on.
 - Project settings, only when you press **Configure** or **Install interpreter**, or run them from
   the command line.
+- `UserSettings/Virtuademy/setup-run.json` — the state of the setup run, for this user and this project: the
+  choices, each step's result, and where a run that Unity interrupted has to go on. `UserSettings` is not
+  versioned.
+- `UserSettings/Virtuademy/setup.json` — your choices in this project: whether the Readme and the introduction show by
+  themselves, the Back Office the Connection page opens, and, while the SDK's connection support installs, the login or import
+  that waits for it. Not versioned.
 - `Assets/AddressableAssetsData/`, only from the command line (the `addressables` step): the
   Addressables settings, profile and default group. The window of Virtuademy-SDK-Environments
   writes the same files when you press **Fix Addressables configurations**.

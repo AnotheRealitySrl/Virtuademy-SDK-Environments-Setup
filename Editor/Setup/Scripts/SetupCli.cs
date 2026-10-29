@@ -5,10 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Reflection;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 using UnityEditor;
 
@@ -19,35 +16,65 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 {
     /// <summary>
     /// Runs what <b>Virtuademy ▸ Setup project</b> does, from the command line, for a machine with
-    /// nobody at the window: a fresh clone, CI, the Env-Test harness. The steps, in the order they
-    /// run:
+    /// nobody at the window: a fresh clone, CI, the Env-Test harness. It has two ways of working.
+    /// <para>
+    /// <b>The whole setup in one launch</b>: <c>-vdSetupSteps run</c> does what the wizard does after
+    /// its Summary page, with the wizard's own engine (<see cref="SetupRun"/>): the project settings,
+    /// the packages of the version, the compile, the update routines, the interpreter (installed, or
+    /// removed with Visual Scripting only), the Addressables, the Visual Scripting nodes and the
+    /// TextMesh Pro essentials, each skipped when the project has it already. The editor stays open
+    /// across the domain reloads the run causes and exits when the run ends, so one launch is enough
+    /// and <c>-quit</c> is refused. <c>-vdSetupSteps plan</c> changes nothing: it logs what the run
+    /// would do as one <c>[SetupCli] PLAN</c> JSON line (each step with its state and detail, what
+    /// cannot be undone, the confirmations missing) and exits with the code the run would start or
+    /// stop with. Both need <c>-vdSetupVersion</c> and <c>-vdSetupScripting</c>, and the run asks the
+    /// wizard's confirmations as options: <c>-vdAllowDowngrade</c> to go back to an older version,
+    /// <c>-vdAllowScriptRemoval</c> to remove the interpreter from a project that has C# scripts in
+    /// <c>Assets/VirtuademyEnvironmentScripts</c> (they stay, and no longer run). Without one of them
+    /// it does not start (<see cref="ExitConfirmationNeeded"/>). The run ends with a
+    /// <c>[SetupCli] RUN</c> JSON line: every step with its state and detail, the step that failed,
+    /// and whether Active Input Handling changed (it applies from the next launch). Launch it with
+    /// <c>-ignoreCompilerErrors</c>: after an update the project's scripts may not compile until the
+    /// update routines have run, and batch mode stops on compile errors otherwise. A run that has not
+    /// ended after <see cref="run_timeout_seconds"/> is ended with <see cref="ExitRunStepFailed"/>.
+    /// </para>
+    /// <para>
+    /// <b>One step at a time</b>, one round per launch. The steps, in the order they run:
+    /// </para>
     /// <list type="bullet">
     /// <item><c>configure</c>: the Configure button.</item>
     /// <item><c>sdk</c>: Install next to Virtuademy SDK Environments, at a given registry version.</item>
     /// <item><c>update</c>: "Update packages to selected version", to the registry version given.
-    /// <b>Never a default step</b>, and not combinable with <c>sdk</c>.</item>
+    /// <b>Never a default step</b>, and not combinable with <c>sdk</c>. Going back to an older version needs
+    /// <c>-vdAllowDowngrade</c>.</item>
     /// <item><c>resolve</c>: re-resolves the git packages whose tag or branch moved on the remote
     /// (a smarter "Re-resolve packages from git"); a no-op when none moved.</item>
-    /// <item><c>interpreter</c>: Install interpreter.</item>
+    /// <item><c>interpreter</c>: Install interpreter; with <c>-vdSetupScripting vs</c>, removes it instead
+    /// (with <c>-vdAllowScriptRemoval</c> when the project has C# scripts).</item>
     /// <item><c>addressables</c>: the Addressables management window's "Fix Addressables
     /// configurations" button.</item>
-    /// <item><c>vslibrary</c>: the SDK's <b>Virtuademy ▸ Update VS Library</b> menu. <b>Opt-in</b>,
-    /// not a default step.</item>
+    /// <item><c>vslibrary</c>: the SDK's <b>Virtuademy ▸ Advanced ▸ Update Visual Scripting library</b> menu (<b>Update VS Library</b> before 2026.7),
+    /// only when the library lacks the SDK's types. <b>Opt-in</b>, not a default step.</item>
+    /// <item><c>tmp</c>: TextMesh Pro's Essential Resources, when they are missing. <b>Opt-in</b>. The import
+    /// ends after the launch's method returns, so the editor stays open until it is done (no <c>-quit</c>).</item>
     /// <item><c>check</c>: changes nothing, reports.</item>
     /// </list>
     /// The default steps, without <c>-vdSetupSteps</c>, are <c>configure</c>, <c>sdk</c>,
     /// <c>resolve</c>, <c>interpreter</c> and <c>addressables</c>.
     /// <code>
-    /// Unity -batchmode -nographics -projectPath &lt;project&gt; -logFile -
+    /// Unity -batchmode -nographics -projectPath &lt;project&gt; -logFile - -ignoreCompilerErrors
     ///       -executeMethod Virtuademy.SDK.Environments.Setup.Editor.SetupCli.Run
     ///       -vdSetupVersion develop
-    ///       [-vdSetupSteps configure,sdk,update,resolve,interpreter,addressables,vslibrary | check]
+    ///       [-vdSetupSteps configure,sdk,update,resolve,interpreter,addressables,vslibrary,tmp | check | plan | run]
+    ///       [-vdSetupScripting vs | csharp] [-vdAllowDowngrade] [-vdAllowScriptRemoval]
     ///       [-vdSetupRegistry &lt;url or file&gt;]
     /// </code>
     /// Arguments are strict: any <c>-vd...</c> argument (with a <c>-</c>, <c>--</c> or <c>/</c> prefix, in
-    /// any case) that is not exactly one of these three is refused with <see cref="ExitBadArguments"/>, as is
-    /// an option given twice and a value that no option claims (<c>-vdSetupSteps sdk update</c>): a typo must
-    /// never run the default steps nobody asked for. Unity's own arguments are not touched.
+    /// any case) that is not exactly one of these options is refused with <see cref="ExitBadArguments"/>, as is
+    /// an option given twice, a value after an option that takes none, and a value that no option claims
+    /// (<c>-vdSetupSteps sdk update</c>): a typo must never run the default steps nobody asked for. Unity's own
+    /// arguments are not touched. <c>-vdSetupScripting</c> is read by <c>interpreter</c>, <c>plan</c> and
+    /// <c>run</c> only, and refused with other steps.
     /// <para>
     /// The <c>interpreter</c> step installs the HybridCLR that the project's recorded version
     /// declares in the registry (<see cref="PackageRegistry.Interpreter"/>), and switches to it when
@@ -91,15 +118,15 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
     /// crosses a version step that has an update routine in the new SDK (a menu item under
     /// <c>Virtuademy/Update routines</c>, such as "v2026.5 -> v2026.6"), that launch logs a warning
     /// with the routine's menu name and its command line (<c>UpdateRoutinesCli</c>, <c>-vdRoutine 2026.6</c>):
-    /// it must run next, because SetupCli does not run it. Not a default step: it removes packages.
+    /// it must run next, because the step does not run it (<c>run</c> does). Not a default step: it removes packages.
     /// </para>
     /// <para>
     /// The <c>vslibrary</c> step calls <c>VisualScriptingSetupEditor.Setup()</c> of
     /// Virtuademy-SDK-Environments, by reflection: it adds the SDK's Visual Scripting types to the
-    /// node library and rebuilds the units. It is opt-in because it is slow (about 75 to 80 s on a
-    /// scratch project, 2026-10-14) and cannot tell it is already done: it rewrites the unit
-    /// options (a file of tens of MB) on every run. An SDK without the method is skipped with a
-    /// warning.
+    /// node library and rebuilds the units, keeping the types a creator added by hand. It is opt-in
+    /// because it is slow (about 75 to 80 s on a scratch project, 2026-10-14) and rewrites the unit
+    /// options (a file of tens of MB). A library that has every type of the SDK already is left
+    /// alone. An SDK without the method is skipped with a warning.
     /// </para>
     /// <para>
     /// <b>One launch does one round, not the whole setup.</b> Every package change ends in a
@@ -115,22 +142,30 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
     /// </para>
     /// <para>
     /// <c>-vdSetupSteps check</c> changes nothing: it reports and exits with <see cref="ExitDone"/>
-    /// when the project is set up, <see cref="ExitNotReady"/> otherwise. The Addressables
-    /// configuration counts once the SDK is installed (<c>addressablesConfigured</c> in the report
-    /// is null before that). So does a git package that moved on the remote
-    /// (<c>stalePackages</c>: name, ref, locked commit, remote commit). A remote that cannot be
-    /// asked is not a failure: <c>stalePackagesChecked</c> is then false and the check goes on.
+    /// when the project is set up, <see cref="ExitNotReady"/> otherwise, counting what the wizard's
+    /// status page counts. The Addressables configuration counts once the SDK is installed
+    /// (<c>addressablesConfigured</c> in the report is null before that). So do a git package that
+    /// moved on the remote (<c>stalePackages</c>: name, ref, locked commit, remote commit) and the
+    /// TextMesh Pro essentials (<c>tmpEssentialsMissing</c>). A remote that cannot be asked is not a
+    /// failure: <c>stalePackagesChecked</c> is then false and the check goes on.
+    /// <c>vsLibraryCurrent</c> (null when it cannot be told) is reported, not counted.
     /// </para>
     /// <para>
     /// The method exits the editor itself, with one of the codes below, so <c>-quit</c> is not
-    /// needed and does not change the outcome. Every launch ends with a <c>[SetupCli] REPORT</c>
-    /// line: one JSON object with every check.
+    /// needed and does not change the outcome, except for <c>run</c> and <c>tmp</c>, which it would
+    /// cut short. Every launch ends with a <c>[SetupCli] REPORT</c> line: one JSON object with every
+    /// check.
     /// </para>
     /// <para>
     /// The <c>sdk</c> step refuses a project that already has packages of another version
     /// (<see cref="ExitOtherVersionInstalled"/>): moving it is the <c>update</c> step.
     /// </para>
+    /// <para>
+    /// This class is the command line: the arguments, the order of the steps, the report and the exit codes. What each
+    /// step does is in <see cref="SetupSteps"/>, which the wizard's engine (<see cref="SetupRun"/>) runs too.
+    /// </para>
     /// </summary>
+    [InitializeOnLoad]
     public static class SetupCli
     {
         /// <summary>Every requested step is done.</summary>
@@ -153,32 +188,29 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         public const int ExitAddressablesFailed = 19;
         /// <summary>The <c>vslibrary</c> step failed: <c>VisualScriptingSetupEditor.Setup()</c> threw.</summary>
         public const int ExitVisualScriptingFailed = 20;
+        /// <summary>A confirmation the wizard asks for is missing: <c>-vdAllowDowngrade</c> or <c>-vdAllowScriptRemoval</c>. Nothing was changed.</summary>
+        public const int ExitConfirmationNeeded = 21;
+        /// <summary>The <c>tmp</c> step failed: the TextMesh Pro Essential Resources were not imported.</summary>
+        public const int ExitTmpEssentialsFailed = 22;
+        /// <summary>A step of <c>run</c> failed, or the run did not end in time: the <c>RUN</c> line names the step and why.</summary>
+        public const int ExitRunStepFailed = 23;
 
         private const string log_prefix = "[SetupCli] ";
 
-        // As many as HotUpdateSetupper allows itself when the window drives it across reloads.
-        private const int max_interpreter_attempts = 3;
+        // Not an exit code: Run leaves the editor open for an engine run, which exits it when it ends.
+        private const int keep_running = -1;
 
-        // Counted across launches, so it cannot live in SessionState, which dies with the editor.
-        // Library/ is per machine and never committed.
-        private const string interpreter_attempts_file = "Library/VirtuademySetupCli.interpreter-attempts";
+        // The longest an engine run is watched: past it, the editor is closed with ExitRunStepFailed. The steps have their own
+        // timeouts (a round of package resolution: 15 minutes); this is for anything that would keep a batch editor open for ever.
+        private const double run_timeout_seconds = 90 * 60;
 
-        // Where the "Virtuademy/Update routines/..." menu items say they are applied from, kept
-        // across the launches of an update: the launch that moves the packages cannot list the
-        // routines of the new SDK, which only exists after the resolve.
-        private const string update_origin_file = "Library/VirtuademySetupCli.updated-from";
+        // Which engine run this command line watches ("run" or "tmp"), and since when: they survive the domain reloads of the run.
+        private const string watch_key = "Virtuademy.SDK.Environments.Setup.CliWatch";
+        private const string watch_started_key = "Virtuademy.SDK.Environments.Setup.CliWatchStarted";
+        private const string watch_run = "run";
+        private const string watch_tmp = "tmp";
 
-        // Where the SDK keeps its editor code. Named, not referenced: this package installs the
-        // SDK, so it cannot compile against it.
-        private const string sdk_editor_assembly = "Virtuademy.SDK.Environments.Editor";
-        private const string addressables_configuration_type = sdk_editor_assembly + ".AddressablesConfiguration";
-        private const string visual_scripting_setup_type = "Virtuademy.SDK.Environments.VisualScripting.Editor.VisualScriptingSetupEditor";
-        private const string update_routines_menu = "Virtuademy/Update routines/";
-
-        // The command line of the same routines, in the SDK's BreakingChangeSolvers: named, not referenced, like the menu.
-        private const string update_routines_cli = "Virtuademy.BreakingChangeSolvers.UpdateRoutinesCli.Run";
-
-        private enum Step { Configure, Sdk, Update, Resolve, Interpreter, Addressables, VisualScriptingLibrary, Check }
+        private enum Step { Configure, Sdk, Update, Resolve, Interpreter, Addressables, VisualScriptingLibrary, TmpEssentials, Check, Plan, Run }
 
         private static readonly Dictionary<string, Step> step_names = new()
         {
@@ -189,17 +221,50 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             { "interpreter", Step.Interpreter },
             { "addressables", Step.Addressables },
             { "vslibrary", Step.VisualScriptingLibrary },
+            { "tmp", Step.TmpEssentials },
             { "check", Step.Check },
+            { "plan", Step.Plan },
+            { "run", Step.Run },
         };
 
-        private static string ProjectRoot => Path.GetDirectoryName(Application.dataPath);
+        // The steps that stand alone.
+        private static readonly Step[] alone_steps = { Step.Check, Step.Plan, Step.Run };
 
-        // Where the registry is read from in this launch, and what was read: one download per
-        // launch, shared by the steps and the report.
-        private static string registrySource = CreatorKitSetupWindow.package_registry_path;
-        private static PackageRegistry[] registryCache;
+        private static readonly Dictionary<string, SetupScripting> scripting_names = new()
+        {
+            { "vs", SetupScripting.VisualScriptingOnly },
+            { "csharp", SetupScripting.VisualScriptingAndCSharp },
+        };
 
-        /// <summary>The <c>-executeMethod</c> entry point. It does not return: it exits the editor.</summary>
+        /// <summary>What the command line asked for.</summary>
+        private sealed class Arguments
+        {
+            internal HashSet<Step> Steps;
+            internal string Version;
+            /// <summary>Null without <c>-vdSetupScripting</c>.</summary>
+            internal SetupScripting? Scripting;
+            internal bool AllowDowngrade;
+            internal bool AllowScriptRemoval;
+        }
+
+        static SetupCli()
+        {
+            if (!Application.isBatchMode || AssetDatabase.IsAssetImportWorkerProcess())
+                return;
+
+            if (string.IsNullOrEmpty(SessionState.GetString(watch_key, string.Empty)))
+                return;
+
+            // A domain reload in the middle of a run this command line watches: what lives in static fields is set again from the
+            // command line, which the process still has, and the watch goes on.
+            SetupSteps.Prefix = log_prefix;
+            string registrySource = GetArgument(Environment.GetCommandLineArgs(), "-vdSetupRegistry");
+            if (registrySource != null)
+                SetupSteps.UseRegistrySource(registrySource);
+            Watch();
+        }
+
+        /// <summary>The <c>-executeMethod</c> entry point. It exits the editor, except for an engine run, which exits it when it ends.</summary>
         public static void Run()
         {
             int code;
@@ -213,20 +278,28 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 code = ExitUnexpected;
             }
 
+            if (code == keep_running)
+            {
+                Debug.Log(log_prefix + "The editor stays open for the run, across its reloads, and exits when the run ends.");
+                return;
+            }
+
             Debug.Log($"{log_prefix}EXIT {code} ({Describe(code)})");
             EditorApplication.Exit(code);
         }
 
         private static int Execute(string[] args)
         {
-            if (!TryParseArguments(args, out HashSet<Step> steps, out string version, out string argumentError))
+            if (!TryParseArguments(args, out Arguments arguments, out string argumentError))
             {
                 Debug.LogError(log_prefix + argumentError);
                 return ExitBadArguments;
             }
 
-            registrySource = GetArgument(args, "-vdSetupRegistry") ?? CreatorKitSetupWindow.package_registry_path;
-            registryCache = null;
+            SetupSteps.Prefix = log_prefix;
+            SetupSteps.Caller = SetupSteps.StepCaller.CommandLine;
+            string registrySource = GetArgument(args, "-vdSetupRegistry") ?? CreatorKitSetupWindow.package_registry_path;
+            SetupSteps.UseRegistrySource(registrySource);
             if (registrySource != CreatorKitSetupWindow.package_registry_path)
                 Debug.Log($"{log_prefix}Registry read from {registrySource} instead of the published one.");
 
@@ -250,41 +323,301 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return ExitModulesMissing;
             }
 
+            HashSet<Step> steps = arguments.Steps;
             if (steps.Contains(Step.Check))
             {
                 return LogReport() ? ExitDone : ExitNotReady;
             }
 
+            if (steps.Contains(Step.Plan) || steps.Contains(Step.Run))
+            {
+                int planned = PlanAndRun(arguments, steps.Contains(Step.Run));
+                if (planned != keep_running)
+                    TryLogReport();
+                return planned;
+            }
+
             int result = ExitDone;
             if (steps.Contains(Step.Configure))
-                result = Configure();
+                result = SetupSteps.Configure(out _).Code;
             if (result == ExitDone && steps.Contains(Step.Sdk))
-                result = InstallSdk(version);
+                result = SetupSteps.InstallSdk(arguments.Version).Code;
             if (result == ExitDone && steps.Contains(Step.Update))
-                result = UpdateVersion(version);
+                result = RunUpdate(arguments);
             if (result == ExitDone && steps.Contains(Step.Resolve))
-                result = ResolveMovedPackages();
+                result = SetupSteps.ResolveMovedPackages().Code;
             if (result == ExitDone && steps.Contains(Step.Interpreter))
-                result = InstallInterpreter();
+                result = RunInterpreter(arguments);
             if (result == ExitDone && steps.Contains(Step.Addressables))
-                result = ConfigureAddressables();
+                result = SetupSteps.ConfigureAddressables().Code;
             if (result == ExitDone && steps.Contains(Step.VisualScriptingLibrary))
-                result = UpdateVisualScriptingLibrary();
-
-            // Informational after the steps: a report that throws must not replace their result.
-            try
+                result = SetupSteps.UpdateVisualScriptingLibrary(onlyWhenMissing: true).Code;
+            if (result == ExitDone && steps.Contains(Step.TmpEssentials))
             {
-                LogReport();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning(log_prefix + "The report could not be produced: " + ex.Message);
+                // The import ends after this method returns: the engine's tmp-essentials step imports and waits for it, alone.
+                if (SetupSteps.TmpEssentialsMissing())
+                    return StartWatchedRun(TmpChoices(), new[] { SetupStepIds.TmpEssentials }, watch_tmp);
+
+                Debug.Log(log_prefix + "tmp: " + (SetupSteps.IsTmpPresent()
+                    ? "the TextMesh Pro Essential Resources are already in the project."
+                    : "TextMesh Pro is not in the project (com.unity.ugui), so there is nothing to import."));
             }
 
+            TryLogReport();
             return result;
         }
 
-        private static readonly string[] value_options = { "-vdSetupVersion", "-vdSetupSteps", "-vdSetupRegistry" };
+        #region Steps
+
+        private static int RunUpdate(Arguments arguments)
+        {
+            // The wizard's confirmation: an older version can break the project.
+            string recorded = SetupSteps.FindConfiguration()?.CurrentInstallationVersion;
+            if (!arguments.AllowDowngrade && !string.IsNullOrEmpty(recorded) && SetupRun.CompareVersions(arguments.Version, recorded) < 0)
+            {
+                Debug.LogError($"{log_prefix}update: Virtuademy {arguments.Version} is older than the installed {recorded}, and an older version " +
+                               "can break the project. Commit or back it up, then launch again with -vdAllowDowngrade.");
+                return ExitConfirmationNeeded;
+            }
+
+            return SetupSteps.UpdateVersion(arguments.Version).Code;
+        }
+
+        private static int RunInterpreter(Arguments arguments)
+        {
+            if (arguments.Scripting != SetupScripting.VisualScriptingOnly)
+                return SetupSteps.InstallInterpreter().Code;
+
+            // The wizard's red banner: the C# scripts stay in the project and no longer run.
+            int scripts = SetupSteps.CountEnvironmentScripts();
+            if (SetupSteps.InterpreterInManifest() && scripts > 0 && !arguments.AllowScriptRemoval)
+            {
+                Debug.LogError($"{log_prefix}interpreter: removing it leaves the {scripts} C# script(s) in {SetupSteps.environment_scripts_folder} " +
+                               "in the project, and they no longer run in Virtuademy. Launch again with -vdAllowScriptRemoval to remove it, " +
+                               "or with -vdSetupScripting csharp to keep it.");
+                return ExitConfirmationNeeded;
+            }
+
+            return SetupSteps.RemoveInterpreter().Code;
+        }
+
+        // The tmp step's run: the installed version and scripting, so nothing else of the plan differs from the project.
+        private static SetupChoices TmpChoices() => new()
+        {
+            Version = SetupRun.FindRecordedVersion(),
+            Scripting = SetupSteps.InterpreterInManifest() ? SetupScripting.VisualScriptingAndCSharp : SetupScripting.VisualScriptingOnly,
+        };
+
+        #endregion
+
+        #region Plan and run
+
+        /// <summary>
+        /// The <c>plan</c> and <c>run</c> steps: what the wizard's Summary page shows, as a <c>PLAN</c> line, and for <c>run</c> the start of
+        /// the engine run, which this command line watches until it ends. Refused before anything is written: a version the registry does
+        /// not list or another Unity needs, C# scripts on a version without an interpreter, a project the engine cannot move (packages
+        /// from before 2026.6), and a confirmation that is missing.
+        /// </summary>
+        private static int PlanAndRun(Arguments arguments, bool run)
+        {
+            const string step = "plan";
+
+            // The engine's wording: it has no launches or steps to point at.
+            SetupSteps.Caller = SetupSteps.StepCaller.Wizard;
+
+            SetupSteps.StepResult registryResult = SetupSteps.LoadRegistry(step, out PackageRegistry[] registry);
+            if (!registryResult.IsDone)
+                return registryResult.Code;
+
+            string version = arguments.Version;
+            SetupSteps.StepResult targetResult = SetupSteps.FindTarget(step, registry, ref version, out PackageRegistry target);
+            if (!targetResult.IsDone)
+                return targetResult.Code;
+
+            // The versions the wizard offers: the run installs and moves to the SDK of 2026.6 and later only.
+            if (target.Packages == null || target.Packages.All(package => package.Name != CreatorKitSetupWindow.sdk_environments_package_name))
+            {
+                Debug.LogError($"{log_prefix}{step}: Virtuademy {version} has no {CreatorKitSetupWindow.sdk_environments_package_name} (versions before 2026.6), " +
+                               "so the run cannot set a project up with it. The update step can move a project to it.");
+                return ExitBadArguments;
+            }
+
+            SetupScripting scripting = arguments.Scripting.Value;
+            if (scripting == SetupScripting.VisualScriptingAndCSharp
+                && (!CreatorKitSetupWindow.TryGetDeclaredInterpreter(target, out PackageDefinition declared) || declared == null))
+            {
+                Debug.LogError($"{log_prefix}{step}: Virtuademy {version} has no interpreter for C# scripts (versions before 2026.6 have none). " +
+                               "Use -vdSetupScripting vs.");
+                return ExitInterpreterFailed;
+            }
+
+            SetupChoices choices = new()
+            {
+                Version = version,
+                Scripting = scripting,
+                AllowDowngrade = arguments.AllowDowngrade,
+                AllowScriptRemoval = arguments.AllowScriptRemoval,
+            };
+
+            // What the run does with every confirmation given; the ones missing are listed apart, by the option that gives each.
+            IReadOnlyList<SetupStepStatus> plan = SetupRun.Plan(new SetupChoices { Version = version, Scripting = scripting, AllowDowngrade = true, AllowScriptRemoval = true });
+
+            string recorded = SetupRun.FindRecordedVersion();
+            List<string> confirmations = new();
+            if (!arguments.AllowDowngrade && recorded != null && SetupRun.CompareVersions(version, recorded) < 0)
+                confirmations.Add("-vdAllowDowngrade");
+
+            bool removesInterpreter = plan.Any(planned => planned.Id == SetupStepIds.Interpreter && planned.State == SetupStepState.Pending
+                                                          && planned.Detail == SetupRun.RemovesInterpreterDetail);
+            if (!arguments.AllowScriptRemoval && removesInterpreter && SetupSteps.CountEnvironmentScripts() > 0)
+                confirmations.Add("-vdAllowScriptRemoval");
+
+            SetupStepStatus refused = plan.FirstOrDefault(planned => planned.State == SetupStepState.Failed);
+            var planReport = new
+            {
+                version,
+                fromVersion = recorded,
+                scripting = scripting_names.First(name => name.Value == scripting).Key,
+                steps = DescribeSteps(plan),
+                irreversible = SetupRun.DestructiveActions(choices, plan),
+                confirmationsNeeded = confirmations,
+                startable = refused == null && confirmations.Count == 0,
+            };
+            Debug.Log(log_prefix + "PLAN " + JsonConvert.SerializeObject(planReport));
+
+            if (refused != null)
+            {
+                Debug.LogError($"{log_prefix}{step}: {refused.Title}: {refused.Detail}");
+
+                // The packages step is the only one the plan refuses here: the version and its Unity were checked above, the
+                // downgrade is a confirmation, so what is left is a project with packages from before 2026.6.
+                return refused.Id == SetupStepIds.Packages ? ExitOtherVersionInstalled : ExitRunStepFailed;
+            }
+
+            if (confirmations.Count > 0)
+            {
+                string message = $"{step}: the run needs {string.Join(" and ", confirmations)}: the PLAN line says what cannot be undone. " +
+                                 $"Commit or back up the project, then launch again with {(confirmations.Count == 1 ? "it" : "them")}.";
+                if (run)
+                    Debug.LogError(log_prefix + message);
+                else
+                    Debug.LogWarning(log_prefix + message);
+                return ExitConfirmationNeeded;
+            }
+
+            if (!run)
+                return ExitDone;
+
+            return StartWatchedRun(choices, null, watch_run);
+        }
+
+        /// <summary>
+        /// Starts an engine run and watches it: the editor stays open, across the run's domain reloads, until the run ends, then the
+        /// <c>RUN</c> line, the report and the exit. <paramref name="mode"/> is <c>run</c> or <c>tmp</c> (which only sets the exit code of a failure).
+        /// </summary>
+        private static int StartWatchedRun(SetupChoices choices, IReadOnlyCollection<string> onlySteps, string mode)
+        {
+            if (SetupRun.IsRunning)
+            {
+                Debug.LogError(log_prefix + "A setup run is already going in this editor.");
+                return ExitUnexpected;
+            }
+
+            SessionState.SetString(watch_key, mode);
+            SessionState.SetString(watch_started_key, EditorApplication.timeSinceStartup.ToString("R", CultureInfo.InvariantCulture));
+            Watch();
+
+            // A run that has nothing to do ends inside Start, and one Start refuses never begins: either way Changed has told the
+            // watch, which exits once this launch's method has returned.
+            SetupRun.Start(choices, onlySteps);
+            return keep_running;
+        }
+
+        private static bool finishing;
+        private static double watchStarted = -1;
+
+        private static void Watch()
+        {
+            SetupRun.Changed -= OnRunChanged;
+            SetupRun.Changed += OnRunChanged;
+            EditorApplication.update -= CheckRunTimeout;
+            EditorApplication.update += CheckRunTimeout;
+        }
+
+        private static void OnRunChanged()
+        {
+            if (SetupRun.IsRunning || finishing)
+                return;
+
+            // After the engine is out of its tick.
+            finishing = true;
+            EditorApplication.delayCall += () => FinishWatchedRun(timedOut: false);
+        }
+
+        private static void CheckRunTimeout()
+        {
+            if (finishing)
+                return;
+
+            if (watchStarted < 0 && !double.TryParse(SessionState.GetString(watch_started_key, string.Empty), NumberStyles.Float, CultureInfo.InvariantCulture, out watchStarted))
+                watchStarted = EditorApplication.timeSinceStartup;
+
+            if (EditorApplication.timeSinceStartup - watchStarted < run_timeout_seconds)
+                return;
+
+            finishing = true;
+            Debug.LogError($"{log_prefix}The setup run did not end within {run_timeout_seconds / 60:0} minutes: the editor is closed.");
+            FinishWatchedRun(timedOut: true);
+        }
+
+        private static void FinishWatchedRun(bool timedOut)
+        {
+            string mode = SessionState.GetString(watch_key, watch_run);
+            SessionState.EraseString(watch_key);
+            SessionState.EraseString(watch_started_key);
+            SetupRun.Changed -= OnRunChanged;
+            EditorApplication.update -= CheckRunTimeout;
+
+            IReadOnlyList<SetupStepStatus> steps = SetupRun.Steps;
+            SetupStepStatus failed = steps.FirstOrDefault(step => step.State == SetupStepState.Failed);
+            SetupStepStatus running = steps.FirstOrDefault(step => step.State == SetupStepState.Running);
+            bool restart = SetupRun.RestartPending;
+
+            // A step still pending at the end is one the run did not reach, but for the restart, which waits for the next launch only.
+            bool complete = !timedOut && failed == null && running == null
+                            && steps.All(step => step.State != SetupStepState.Pending || step.Id == SetupStepIds.Restart);
+
+            var runReport = new
+            {
+                steps = DescribeSteps(steps),
+                failedStep = failed?.Id ?? (timedOut ? running?.Id : null),
+                timedOut,
+                restartPending = restart,
+            };
+            Debug.Log(log_prefix + "RUN " + JsonConvert.SerializeObject(runReport));
+            if (restart)
+                Debug.Log(log_prefix + "Active Input Handling changed: it applies from the next launch of the editor.");
+
+            TryLogReport();
+
+            int code = complete ? ExitDone : mode == watch_tmp ? ExitTmpEssentialsFailed : ExitRunStepFailed;
+            Debug.Log($"{log_prefix}EXIT {code} ({Describe(code)})");
+            EditorApplication.Exit(code);
+        }
+
+        private static List<object> DescribeSteps(IEnumerable<SetupStepStatus> steps)
+            => steps.Select(step => (object)new { id = step.Id, title = step.Title, state = step.State.ToString(), detail = step.Detail }).ToList();
+
+        #endregion
+
+        #region Arguments
+
+        private static readonly string[] value_options = { "-vdSetupVersion", "-vdSetupSteps", "-vdSetupRegistry", "-vdSetupScripting" };
+
+        // Options that take no value: present or not.
+        private static readonly string[] flag_options = { "-vdAllowDowngrade", "-vdAllowScriptRemoval" };
+
+        private static readonly string[] all_options = value_options.Concat(flag_options).ToArray();
 
         // Unity's own options that take a value: the token after one is Unity's, not a stray value of ours.
         private static readonly string[] unity_value_options = { "-projectPath", "-logFile", "-executeMethod", "-buildTarget", "-activeBuildProfile" };
@@ -295,13 +628,15 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         /// <summary>
         /// Checks every <c>-vd</c> argument of the command line: one that is not exactly a known option
         /// (<c>--vdSetupSteps</c>, <c>-vdsetupsteps</c> are not <c>-vdSetupSteps</c>), one given twice, an option with
-        /// no value, and a token that no option claims after an option's value are all refused. Unity's own
-        /// arguments (and the value of the ones that take one) are left alone.
+        /// no value, a value after an option that takes none, and a token that no option claims after an option's value
+        /// are all refused. Unity's own arguments (and the value of the ones that take one) are left alone.
         /// </summary>
         private static bool TryCheckArguments(string[] args, out string error)
         {
             error = null;
             HashSet<string> seen = new();
+
+            bool IsStray(int index) => index < args.Length && !args[index].StartsWith("-", StringComparison.Ordinal) && !vd_like.IsMatch(args[index]);
 
             // Index 0 is the editor's own path.
             for (int i = 1; i < args.Length; i++)
@@ -317,11 +652,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 if (!vd_like.IsMatch(arg))
                     continue;
 
-                if (!value_options.Contains(arg))
+                if (!all_options.Contains(arg))
                 {
-                    string near = value_options.FirstOrDefault(o => string.Equals(o, "-" + arg.TrimStart('-', '/'), StringComparison.OrdinalIgnoreCase));
+                    string near = all_options.FirstOrDefault(o => string.Equals(o, "-" + arg.TrimStart('-', '/'), StringComparison.OrdinalIgnoreCase));
                     error = $"'{arg}' is not an option of this tool." +
-                            (near != null ? $" Did you mean {near}? Options are exact, with a single leading dash." : $" Options: {string.Join(", ", value_options)}.");
+                            (near != null ? $" Did you mean {near}? Options are exact, with a single leading dash." : $" Options: {string.Join(", ", all_options)}.");
                     return false;
                 }
 
@@ -329,6 +664,17 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 {
                     error = $"{arg} is given twice.";
                     return false;
+                }
+
+                if (flag_options.Contains(arg))
+                {
+                    if (IsStray(i + 1))
+                    {
+                        error = $"{arg} takes no value: '{args[i + 1]}' belongs to no option.";
+                        return false;
+                    }
+
+                    continue;
                 }
 
                 if (i + 1 >= args.Length || args[i + 1].StartsWith("-", StringComparison.Ordinal) || vd_like.IsMatch(args[i + 1]))
@@ -341,7 +687,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
                 // The one place a stray value can hide: right behind an option's value. Whatever Unity's
                 // options carry comes after an option of theirs, which starts with a dash.
-                if (i + 1 < args.Length && !args[i + 1].StartsWith("-", StringComparison.Ordinal) && !vd_like.IsMatch(args[i + 1]))
+                if (IsStray(i + 1))
                 {
                     error = $"'{args[i + 1]}' follows {arg} and its value and belongs to no option (a list takes commas, as in -vdSetupSteps sdk,resolve).";
                     return false;
@@ -351,20 +697,25 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             return true;
         }
 
-        private static bool TryParseArguments(string[] args, out HashSet<Step> steps, out string version, out string error)
+        private static bool TryParseArguments(string[] args, out Arguments arguments, out string error)
         {
-            steps = new HashSet<Step> { Step.Configure, Step.Sdk, Step.Resolve, Step.Interpreter, Step.Addressables };
-            version = null;
+            arguments = new Arguments
+            {
+                Steps = new HashSet<Step> { Step.Configure, Step.Sdk, Step.Resolve, Step.Interpreter, Step.Addressables },
+            };
 
             if (!TryCheckArguments(args, out error))
                 return false;
 
-            version = GetArgument(args, "-vdSetupVersion");
+            arguments.Version = GetArgument(args, "-vdSetupVersion");
+            arguments.AllowDowngrade = args.Contains("-vdAllowDowngrade");
+            arguments.AllowScriptRemoval = args.Contains("-vdAllowScriptRemoval");
+            HashSet<Step> steps = arguments.Steps;
 
             string stepList = GetArgument(args, "-vdSetupSteps");
             if (stepList != null)
             {
-                steps = new HashSet<Step>();
+                steps.Clear();
                 foreach (string name in stepList.Split(',').Select(x => x.Trim().ToLowerInvariant()).Where(x => x.Length > 0))
                 {
                     if (!step_names.TryGetValue(name, out Step step))
@@ -381,9 +732,12 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                     return false;
                 }
 
-                if (steps.Contains(Step.Check) && steps.Count > 1)
+                Step[] alone = alone_steps.Where(steps.Contains).Take(1).ToArray();
+                if (steps.Count > 1 && alone.Length > 0)
                 {
-                    error = "The check step changes nothing, so it cannot be combined with the others.";
+                    error = alone[0] == Step.Check
+                        ? "The check step changes nothing, so it cannot be combined with the others."
+                        : $"The {step_names.First(name => name.Value == alone[0]).Key} step is the whole setup, so it cannot be combined with other steps.";
                     return false;
                 }
             }
@@ -396,9 +750,41 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 return false;
             }
 
-            if ((steps.Contains(Step.Sdk) || steps.Contains(Step.Update)) && string.IsNullOrWhiteSpace(version))
+            if ((steps.Contains(Step.Sdk) || steps.Contains(Step.Update) || steps.Contains(Step.Plan) || steps.Contains(Step.Run)) && string.IsNullOrWhiteSpace(arguments.Version))
             {
-                error = "The sdk and update steps need the registry version, e.g. -vdSetupVersion develop.";
+                error = "The sdk, update, plan and run steps need the registry version, e.g. -vdSetupVersion develop.";
+                return false;
+            }
+
+            string scripting = GetArgument(args, "-vdSetupScripting");
+            if (scripting != null)
+            {
+                if (!scripting_names.TryGetValue(scripting.Trim().ToLowerInvariant(), out SetupScripting parsed))
+                {
+                    error = "-vdSetupScripting takes vs (Visual Scripting only) or csharp (Visual Scripting and C# scripts, with the interpreter).";
+                    return false;
+                }
+
+                if (!steps.Contains(Step.Interpreter) && !steps.Contains(Step.Plan) && !steps.Contains(Step.Run))
+                {
+                    error = "-vdSetupScripting is read by the interpreter, plan and run steps only.";
+                    return false;
+                }
+
+                arguments.Scripting = parsed;
+            }
+
+            // The run removes the interpreter or keeps it: a choice it never makes by default.
+            if ((steps.Contains(Step.Plan) || steps.Contains(Step.Run)) && arguments.Scripting == null)
+            {
+                error = "The plan and run steps need -vdSetupScripting vs (Visual Scripting only) or csharp (Visual Scripting and C# scripts).";
+                return false;
+            }
+
+            // Checked before any step runs: -quit closes the editor as soon as the launch's method returns, before these end.
+            if ((steps.Contains(Step.Run) || steps.Contains(Step.TmpEssentials)) && args.Contains("-quit", StringComparer.OrdinalIgnoreCase))
+            {
+                error = "-quit would close the editor before the run or the tmp import ends: launch without it. The editor exits by itself when they end.";
                 return false;
             }
 
@@ -414,709 +800,21 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             return args[index + 1];
         }
 
-        #region Steps
-
-        private static int Configure()
-        {
-            RenderPipelineAsset asset = CreatorKitSetupWindow.LoadDefaultRenderPipelineAsset();
-            if (asset == null)
-            {
-                Debug.LogError(log_prefix + "configure: the installer's render pipeline asset could not be loaded. " +
-                               "The installer package looks incomplete.");
-                return ExitProjectSettingsFailed;
-            }
-
-            if (ProjectSettingsConfigured(asset))
-            {
-                Debug.Log(log_prefix + "configure: the project settings are already configured.");
-                return ExitDone;
-            }
-
-            bool inputHandlingChanged = CreatorKitSetupWindow.ApplyProjectSettings(asset);
-
-            if (!ProjectSettingsConfigured(asset))
-            {
-                Debug.LogError(log_prefix + "configure: the settings were applied, but the checks still fail.");
-                return ExitProjectSettingsFailed;
-            }
-
-            Debug.Log(log_prefix + "configure: URP, API compatibility .NET Framework, Active Input Handling Both and max texture size 1024 applied." +
-                      (inputHandlingChanged ? " The input handling applies from the next editor launch." : string.Empty));
-            return ExitDone;
-        }
-
-        private static int InstallSdk(string version)
-        {
-            int registryResult = LoadRegistry("sdk", out PackageRegistry[] registry);
-            if (registryResult != ExitDone)
-                return registryResult;
-
-            int targetResult = FindTarget("sdk", registry, ref version, out PackageRegistry target);
-            if (targetResult != ExitDone)
-                return targetResult;
-
-            if (!target.PackageDictionary.TryGetValue(CreatorKitSetupWindow.sdk_environments_package_name, out PackageDefinition sdk))
-            {
-                // Entries before 2026.6 ship the authoring package under its earlier ids, which
-                // this step does not install: the window still can.
-                Debug.LogError($"{log_prefix}sdk: registry entry '{version}' has no {CreatorKitSetupWindow.sdk_environments_package_name}: " +
-                               "the command line installs 2026.6 and later. Use the window for an earlier version.");
-                return ExitBadArguments;
-            }
-
-            string wanted = $"{sdk.Url}#{sdk.Version}";
-            string inManifest = CreatorKitSetupWindow.ReadManifestDependency(CreatorKitSetupWindow.sdk_environments_package_name);
-
-            if (inManifest == wanted)
-            {
-                if (!IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name))
-                {
-                    Debug.LogError($"{log_prefix}sdk: {wanted} is in Packages/manifest.json but did not resolve. " +
-                                   "The package manager errors are earlier in the log.");
-                    return ExitSdkMissing;
-                }
-
-                RecordVersion(PrepareConfiguration(registry, version), target);
-                Debug.Log($"{log_prefix}sdk: Virtuademy-SDK-Environments {version} is installed.");
-                return ExitDone;
-            }
-
-            List<string> ours = RegisteredPackagesOfOurs(registry);
-            if (inManifest != null || ours.Count > 0)
-            {
-                string found = inManifest != null
-                    ? $"Packages/manifest.json asks for {inManifest}, while registry entry '{version}' is {wanted}"
-                    : $"this project already has Virtuademy packages: {string.Join(", ", ours)}";
-                Debug.LogError($"{log_prefix}sdk: {found}. Moving a project to another version is an update, which the " +
-                               "sdk step does not do. Use the update step (-vdSetupSteps update -vdSetupVersion <version>) or " +
-                               "\"Update packages to selected version\" in Virtuademy > Setup project: both also remove what " +
-                               "the new version drops.");
-                return ExitOtherVersionInstalled;
-            }
-
-            PackageManagerConfiguration config = PrepareConfiguration(registry, version);
-            RecordVersion(config, target);
-            CreatorKitSetupWindow.AddPackageWithDependencies(config, sdk);
-
-            Debug.Log($"{log_prefix}sdk: Virtuademy-SDK-Environments {version} and its dependencies written to " +
-                      "Packages/manifest.json. Launch again to resolve them.");
-            return ExitRelaunch;
-        }
-
-        private static int InstallInterpreter()
-        {
-            if (!IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name))
-            {
-                Debug.LogError(log_prefix + "interpreter: Virtuademy-SDK-Environments is not installed, and the interpreter " +
-                               "setup ships with it. Run the sdk step first.");
-                return ExitSdkMissing;
-            }
-
-            // The HybridCLR to install is the one the project's recorded version declares.
-            PackageManagerConfiguration config = FindConfiguration();
-            string recorded = config != null ? config.CurrentInstallationVersion : null;
-            if (string.IsNullOrEmpty(recorded))
-            {
-                Debug.LogError(log_prefix + "interpreter: the project records no Virtuademy version, so which HybridCLR to " +
-                               "install is unknown. Run the sdk step, or open Virtuademy > Setup project once.");
-                return ExitSdkMissing;
-            }
-
-            int registryResult = LoadRegistry("interpreter", out PackageRegistry[] registry);
-            if (registryResult != ExitDone)
-                return registryResult;
-
-            PackageRegistry entry = registry.FirstOrDefault(candidate => candidate.ReflectisVersion == recorded);
-            if (entry == null)
-            {
-                Debug.LogError($"{log_prefix}interpreter: the project records Virtuademy {recorded}, which the registry no longer lists.");
-                return ExitRegistryUnavailable;
-            }
-
-            if (!CreatorKitSetupWindow.TryGetDeclaredInterpreter(entry, out PackageDefinition declared))
-                return ExitRegistryUnavailable;
-
-            if (declared == null)
-            {
-                Debug.LogError($"{log_prefix}interpreter: Virtuademy {recorded} declares no interpreter in the registry, so no " +
-                               "HybridCLR is known to work with it. Versions before 2026.6 have no interpreter; a later " +
-                               "version without one is missing its \"interpreter\" entry in the registry.");
-                return ExitInterpreterFailed;
-            }
-
-            // Missing or another version: written as the window's InstallPackages writes it, and
-            // resolved at the start of the next launch, so nothing has to survive a domain reload.
-            string wanted = CreatorKitSetupWindow.InterpreterReference(declared);
-            string inManifest = CreatorKitSetupWindow.ReadManifestDependency(CreatorKitSetupWindow.hybridclr_package_name);
-            if (inManifest != wanted)
-            {
-                CreatorKitSetupWindow.InstallPackages(new() { declared });
-                Debug.Log(inManifest == null
-                    ? $"{log_prefix}interpreter: HybridCLR {declared.Version} written to Packages/manifest.json. Launch again to resolve and compile it."
-                    : $"{log_prefix}interpreter: HybridCLR switched from {inManifest} to {wanted}. Launch again to resolve and compile it.");
-                return ExitRelaunch;
-            }
-
-            if (!IsRegistered(CreatorKitSetupWindow.hybridclr_package_name))
-            {
-                Debug.LogError($"{log_prefix}interpreter: {wanted} is in Packages/manifest.json but did not resolve. " +
-                               "The package manager errors are earlier in the log.");
-                return ExitInterpreterFailed;
-            }
-
-            if (CreatorKitSetupWindow.FindSetupperType() == null)
-            {
-                Debug.LogError(log_prefix + "interpreter: HybridCLR is installed but HotUpdateSetupper did not compile. " +
-                               "Look for compilation errors earlier in the log.");
-                return ExitInterpreterFailed;
-            }
-
-            if (CreatorKitSetupWindow.IsInterpreterReady(entry, out string issue))
-            {
-                ClearInterpreterAttempts();
-                Debug.Log(log_prefix + "interpreter: ready.");
-                return ExitDone;
-            }
-
-            int attempt = NextInterpreterAttempt();
-            if (attempt > max_interpreter_attempts)
-            {
-                ClearInterpreterAttempts();
-                Debug.LogError($"{log_prefix}interpreter: still not ready after {max_interpreter_attempts} configurations: {issue}");
-                return ExitInterpreterFailed;
-            }
-
-            // Synchronous. When this editor's IL2CPP has no interpreter yet, it clones hybridclr and
-            // il2cpp_plus first, which takes a few minutes.
-            Debug.Log($"{log_prefix}interpreter: configuring, attempt {attempt} of {max_interpreter_attempts} ({issue})");
-            CreatorKitSetupWindow.InvokeSetupperViaReflection();
-
-            if (CreatorKitSetupWindow.IsInterpreterReady(entry, out issue))
-            {
-                ClearInterpreterAttempts();
-                Debug.Log(log_prefix + "interpreter: configured.");
-                return ExitDone;
-            }
-
-            // Some of the setup only takes effect after a recompilation, which is why the window's
-            // path retries on the domain reload. Here the next launch does.
-            Debug.Log($"{log_prefix}interpreter: continues in the next launch ({issue})");
-            return ExitRelaunch;
-        }
-
-        private static int ConfigureAddressables()
-        {
-            if (!IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name))
-            {
-                Debug.LogError(log_prefix + "addressables: Virtuademy-SDK-Environments is not installed, and the Addressables " +
-                               "configuration ships with it. Run the sdk step first.");
-                return ExitSdkMissing;
-            }
-
-            Type configuration = FindAddressablesConfigurationType();
-            if (configuration == null)
-            {
-                if (EditorUtility.scriptCompilationFailed)
-                {
-                    Debug.LogError(log_prefix + "addressables: Virtuademy-SDK-Environments is installed but its editor assembly " +
-                                   "did not compile. Look for compilation errors earlier in the log.");
-                    return ExitSdkMissing;
-                }
-
-                // A registry version older than the class: the default steps must keep installing it.
-                Debug.LogWarning(log_prefix + "addressables: this Virtuademy-SDK-Environments has no AddressablesConfiguration " +
-                                 "(it predates it), so there is nothing to apply. Use its Addressables management window.");
-                return ExitDone;
-            }
-
-            try
-            {
-                if (ReadAddressablesConfigured(configuration) == true)
-                {
-                    Debug.Log(log_prefix + "addressables: already configured.");
-                    return ExitDone;
-                }
-
-                // The same reset the window's Fix Addressables configurations button does.
-                Debug.Log(log_prefix + "addressables: applying the SDK's Addressables profile and resetting the Addressables " +
-                          "groups to the single default group (every other group and every entry is removed).");
-                configuration.GetMethod("Apply", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
-
-                if (ReadAddressablesConfigured(configuration) != true)
-                {
-                    Debug.LogError(log_prefix + "addressables: the configuration was applied, but the checks still fail.");
-                    return ExitAddressablesFailed;
-                }
-            }
-            catch (TargetInvocationException ex)
-            {
-                Debug.LogError(log_prefix + "addressables: " + (ex.InnerException ?? ex));
-                return ExitAddressablesFailed;
-            }
-
-            Debug.Log(log_prefix + "addressables: configured.");
-            return ExitDone;
-        }
-
-        /// <summary>
-        /// Re-resolves the git packages whose tag or branch moved on the remote, which is what the
-        /// window's <b>Re-resolve packages from git</b> does for every package, moved or not. It
-        /// compares, per package, the commit <c>packages-lock.json</c> pins with what the manifest's
-        /// ref points to now (<see cref="PackageLock.FindStale"/>), and unpins the stale ones only:
-        /// the next launch resolves them again, which is why this step exits
-        /// <see cref="ExitRelaunch"/>, and finds none stale. A remote that cannot be reached leaves
-        /// the package "unknown": a warning, nothing unpinned, exit <see cref="ExitDone"/>.
-        /// </summary>
-        private static int ResolveMovedPackages()
-        {
-            int registryResult = LoadRegistry("resolve", out PackageRegistry[] registry);
-            if (registryResult != ExitDone)
-                return registryResult;
-
-            PackageLock.StaleReport stale = PackageLock.FindStale(registry);
-            if (!stale.Complete)
-                Debug.LogWarning($"{log_prefix}resolve: could not tell whether these moved on the remote (no network, no access, or the ref " +
-                                 $"is gone): {string.Join(", ", stale.Unknown)}.");
-
-            if (stale.Stale.Count == 0)
-            {
-                if (stale.Complete)
-                    Debug.Log($"{log_prefix}resolve: {(stale.Compared == 0 ? "no pinned git package to compare" : $"{stale.Compared} pinned git package(s) compared, none moved")}.");
-                return ExitDone;
-            }
-
-            foreach (PackageLock.StalePackage package in stale.Stale)
-                Debug.Log($"{log_prefix}resolve: {package.Name} is pinned to {ShortCommit(package.LockedCommit)}, " +
-                          $"{package.Reference ?? "the default branch"} is at {ShortCommit(package.RemoteCommit)} on the remote.");
-
-            // All or nothing: unpinning only the packages whose remote answered would leave the project with
-            // some packages at the new commit and the others at the old one, a combination nobody tested.
-            if (!stale.Complete)
-            {
-                Debug.LogWarning($"{log_prefix}resolve: nothing was unpinned, because {stale.Unknown.Count} package(s) could not be checked and a " +
-                                 $"partial update would mix new and old packages. Still pinned to an older commit: " +
-                                 $"{string.Join(", ", stale.Stale.Select(package => package.Name))}. Launch again when the remotes can be reached.");
-                return ExitDone;
-            }
-
-            List<string> unpinned = PackageLock.Unpin(registry, stale.Stale.Select(package => package.Name));
-            Debug.Log($"{log_prefix}resolve: unpinned {unpinned.Count} package(s) from packages-lock.json. Launch again to resolve " +
-                      "them; each is cloned again, so give it a moment.");
-            return ExitRelaunch;
-        }
-
-        /// <summary>
-        /// The window's <b>Update packages to selected version</b>, to the registry version given with
-        /// <c>-vdSetupVersion</c>, for a project that has another one installed (what the <c>sdk</c>
-        /// step refuses with <see cref="ExitOtherVersionInstalled"/>). The semantics are the window's,
-        /// through the same code (<see cref="CreatorKitSetupWindow.ApplyVersionUpdate"/>): what the new
-        /// version adds is installed, what it moves is moved, <b>what it does not list is removed</b>,
-        /// and HybridCLR follows the registry. The manifest and <c>SetupConfiguration.asset</c> are
-        /// written and the step exits <see cref="ExitRelaunch"/>; the next launch resolves the new
-        /// packages, finds the project at the target and exits <see cref="ExitDone"/>.
-        /// <para>
-        /// A version step may have an update routine in the SDK, a menu item under
-        /// <c>Virtuademy/Update routines</c> (for example "v2026.5 -> v2026.6"). They are in the new
-        /// SDK, so the launch that finds the project at the target lists the ones the move crosses and
-        /// logs that they must run next. This class does not run them.
-        /// </para>
-        /// </summary>
-        private static int UpdateVersion(string version)
-        {
-            int registryResult = LoadRegistry("update", out PackageRegistry[] registry);
-            if (registryResult != ExitDone)
-                return registryResult;
-
-            int targetResult = FindTarget("update", registry, ref version, out PackageRegistry target);
-            if (targetResult != ExitDone)
-                return targetResult;
-
-            // What the window shows as the installed version. Without one the project was never set
-            // up by this installer, and there is nothing to move from: that is the sdk step.
-            PackageManagerConfiguration existing = FindConfiguration();
-            string recorded = existing != null ? existing.CurrentInstallationVersion : null;
-            if (string.IsNullOrEmpty(recorded))
-            {
-                Debug.LogError(log_prefix + "update: the project records no Virtuademy version, so there is nothing to update from. " +
-                               "Run the sdk step to install " + version + ".");
-                return ExitSdkMissing;
-            }
-
-            if (recorded == version)
-            {
-                string origin = ReadUpdateOrigin();
-                if (origin != null)
-                {
-                    if (!IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name))
-                    {
-                        Debug.LogError($"{log_prefix}update: the packages of Virtuademy {version} are in Packages/manifest.json but " +
-                                       "Virtuademy-SDK-Environments did not resolve. The package manager errors are earlier in the log.");
-                        return ExitSdkMissing;
-                    }
-
-                    LogUpdateRoutines(origin, version);
-                    ClearUpdateOrigin();
-                }
-
-                Debug.Log($"{log_prefix}update: the project is at Virtuademy {version}.");
-                return ExitDone;
-            }
-
-            // The installed list the way the window has it when it opens: the displayed version is
-            // the installed one while it is listed, so the packages it adds get that entry's urls.
-            PackageManagerConfiguration config = CreatorKitSetupWindow.LoadOrCreateConfiguration();
-            config.AllVersionsPackageRegistry = registry;
-            config.DisplayedReflectisVersion = registry.Any(entry => entry.ReflectisVersion == recorded) ? recorded : version;
-            CreatorKitSetupWindow.DropUnmanagedInstalledPackages(config);
-            CreatorKitSetupWindow.AddResolvedInstalledPackages(config, UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages()
-                .Where(package => package.isDirectDependency));
-
-            config.DisplayedReflectisVersion = version;
-            bool interpreterMoved = CreatorKitSetupWindow.ApplyVersionUpdate(config, out List<string> removedPackages);
-
-            if (removedPackages.Count > 0)
-                Debug.Log($"{log_prefix}update: removed, not part of Virtuademy {version}:\n  " + string.Join("\n  ", removedPackages));
-            if (interpreterMoved)
-                Debug.Log(log_prefix + "update: HybridCLR moved with the version; the interpreter step configures it after the resolve.");
-            if (config.ResolveBreakingChangesAutomatically)
-                Debug.LogWarning(log_prefix + "update: \"Resolve breaking changes automatically\" is on in the project, but the command line " +
-                                 "does not download the old conversion script (the window does, for 2025.3 -> 2025.4 only).");
-
-            RecordVersion(config, target);
-            WriteUpdateOrigin(recorded);
-
-            Debug.Log($"{log_prefix}update: Virtuademy {recorded} -> {version} written to Packages/manifest.json. Launch again to resolve the packages.");
-            return ExitRelaunch;
-        }
-
-        /// <summary>
-        /// The registry entry for <paramref name="version"/>, which is respelled as the registry spells
-        /// it from here on (the window matches versions exactly), and the check that this editor is
-        /// the one the entry requires. Stricter than the window, which only shows the mismatch in
-        /// red: a batch run has nobody to see it, and installing anyway produces a project that does
-        /// not compile.
-        /// </summary>
-        private static int FindTarget(string step, PackageRegistry[] registry, ref string version, out PackageRegistry target)
-        {
-            string asked = version;
-            target = registry.FirstOrDefault(entry => string.Equals(entry.ReflectisVersion, asked, StringComparison.OrdinalIgnoreCase));
-            if (target == null)
-            {
-                string listed = string.Join(", ", registry.Select(entry => entry.Prerelease ? entry.ReflectisVersion + " (prerelease)" : entry.ReflectisVersion));
-                Debug.LogError($"{log_prefix}{step}: version '{version}' is not in the registry. Listed: {listed}.");
-                return ExitBadArguments;
-            }
-
-            version = target.ReflectisVersion;
-
-            if (CreatorKitSetupWindow.UnityVersion != target.RequiredUnityVersion)
-            {
-                Debug.LogError($"{log_prefix}{step}: Virtuademy {version} requires Unity {target.RequiredUnityVersion}; " +
-                               $"this editor is {CreatorKitSetupWindow.UnityVersion}.");
-                return ExitUnityVersionMismatch;
-            }
-
-            return ExitDone;
-        }
-
-        /// <summary>
-        /// The SDK's <b>Virtuademy ▸ Update VS Library</b> menu item: <c>VisualScriptingSetupEditor.Setup()</c>,
-        /// by reflection like <see cref="ConfigureAddressables"/>. It marks Visual Scripting as used,
-        /// resets Visual Scripting's type options to its defaults, adds every type that the project's
-        /// <c>VisualScriptingCustomTypeCollector</c> assets list (and their namespaces to the assembly
-        /// options), saves the Visual Scripting settings and rebuilds the units. Without it the
-        /// SDK's nodes are not in the node library of a project set up from the command line.
-        /// <para>
-        /// <b>Not a default step.</b> It cannot tell it is already done: it does everything again,
-        /// every time, ending with a unit rebuild, and the only way to know what it would add is the
-        /// SDK's private collector. So it runs when asked (<c>-vdSetupSteps vslibrary</c>), after the
-        /// others in a launch. An SDK without the method is skipped with a warning.
-        /// </para>
-        /// </summary>
-        private static int UpdateVisualScriptingLibrary()
-        {
-            if (!IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name))
-            {
-                Debug.LogError(log_prefix + "vslibrary: Virtuademy-SDK-Environments is not installed, and the Visual Scripting " +
-                               "library setup ships with it. Run the sdk step first.");
-                return ExitSdkMissing;
-            }
-
-            Type setup = FindSdkType(visual_scripting_setup_type);
-            MethodInfo method = setup?.GetMethod("Setup", BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
-            if (method == null)
-            {
-                if (EditorUtility.scriptCompilationFailed && setup == null)
-                {
-                    Debug.LogError(log_prefix + "vslibrary: Virtuademy-SDK-Environments is installed but its editor assembly " +
-                                   "did not compile. Look for compilation errors earlier in the log.");
-                    return ExitSdkMissing;
-                }
-
-                Debug.LogWarning(log_prefix + "vslibrary: this Virtuademy-SDK-Environments has no VisualScriptingSetupEditor.Setup " +
-                                 "(it predates it), so there is nothing to apply.");
-                return ExitDone;
-            }
-
-            Debug.Log(log_prefix + "vslibrary: updating the Visual Scripting library (VisualScriptingSetupEditor.Setup).");
-            System.Diagnostics.Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                method.Invoke(null, null);
-            }
-            catch (TargetInvocationException ex)
-            {
-                Debug.LogError(log_prefix + "vslibrary: " + (ex.InnerException ?? ex));
-                return ExitVisualScriptingFailed;
-            }
-
-            Debug.Log($"{log_prefix}vslibrary: updated in {stopwatch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)} s.");
-            return ExitDone;
-        }
-
         #endregion
 
-        #region Helpers
+        #region Report
 
-        private static string ShortCommit(string commit) => commit.Length > 8 ? commit[..8] : commit;
-
-        /// <summary>A type of the SDK's editor assembly, which only exists once the package has
-        /// resolved and compiled, so it can only be reached by reflection. Null before that.</summary>
-        private static Type FindSdkType(string fullName)
-            => AppDomain.CurrentDomain.GetAssemblies()
-                .Where(assembly => assembly.GetName().Name == sdk_editor_assembly)
-                .Select(assembly => assembly.GetType(fullName, false))
-                .FirstOrDefault(type => type != null);
-
-        /// <summary>
-        /// The SDK's <c>AddressablesConfiguration</c>, which only exists once the package has
-        /// resolved and compiled, so it can only be reached by reflection. Null before that.
-        /// </summary>
-        private static Type FindAddressablesConfigurationType() => FindSdkType(addressables_configuration_type);
-
-        // Per machine, like the interpreter attempts: Library/ is never committed.
-        private static string UpdateOriginPath => Path.Combine(ProjectRoot, update_origin_file);
-
-        private static string ReadUpdateOrigin()
-            => File.Exists(UpdateOriginPath) ? File.ReadAllText(UpdateOriginPath).Trim() : null;
-
-        private static void WriteUpdateOrigin(string version) => File.WriteAllText(UpdateOriginPath, version);
-
-        private static void ClearUpdateOrigin()
+        // Informational after the steps: a report that throws must not replace their result.
+        private static void TryLogReport()
         {
-            if (File.Exists(UpdateOriginPath))
-                File.Delete(UpdateOriginPath);
-        }
-
-        /// <summary>
-        /// The first two numbers of a version as a series: "2026.5.1" and "v2026.5" are both
-        /// (2026, 5). False for anything else, such as the pre-release "develop".
-        /// </summary>
-        private static bool TryParseSeries(string text, out (int year, int minor) series)
-        {
-            Match match = Regex.Match(text ?? string.Empty, @"v?(\d+)\.(\d+)");
-            series = match.Success ? (int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value)) : default;
-            return match.Success;
-        }
-
-        /// <summary>
-        /// Logs the SDK's update routines that the move from <paramref name="from"/> to
-        /// <paramref name="to"/> crosses, each with its menu name: the menu items of the new SDK
-        /// under <c>Virtuademy/Update routines</c>, named "vA -> vB", whose step lies between the two
-        /// versions. They change the project's assets, so the log says they must run next, and that
-        /// this class does not run them. A pre-release or a downgrade has no numbered step to match,
-        /// so the log points at the menu instead.
-        /// </summary>
-        private static void LogUpdateRoutines(string from, string to)
-        {
-            List<string> routines = new();
-            foreach (MethodInfo method in TypeCache.GetMethodsWithAttribute<MenuItem>())
-            {
-                foreach (MenuItem item in method.GetCustomAttributes<MenuItem>())
-                {
-                    if (item.menuItem.StartsWith(update_routines_menu, StringComparison.Ordinal))
-                        routines.Add(item.menuItem.Substring(update_routines_menu.Length));
-                }
-            }
-
-            if (!TryParseSeries(from, out var fromSeries) || !TryParseSeries(to, out var toSeries))
-            {
-                Debug.Log($"{log_prefix}update: {from} -> {to} is not a step between released versions, so no update routine is matched. " +
-                          "Look under Virtuademy > Update routines" +
-                          (routines.Count > 0 ? ", which has: " + string.Join(", ", routines) : ", which this SDK does not have") + ".");
-                return;
-            }
-
-            if (toSeries.CompareTo(fromSeries) <= 0)
-            {
-                Debug.Log($"{log_prefix}update: {from} -> {to} does not go to a later series, and update routines only run forward.");
-                return;
-            }
-
-            List<string> crossed = new();
-            foreach (string name in routines.OrderByDescending(name => name, StringComparer.Ordinal))
-            {
-                string[] sides = name.Split(new[] { "->" }, StringSplitOptions.None);
-                if (sides.Length == 2 && TryParseSeries(sides[0], out var routineFrom) && TryParseSeries(sides[1], out var routineTo)
-                    && routineFrom.CompareTo(fromSeries) >= 0 && routineTo.CompareTo(toSeries) <= 0 && routineFrom.CompareTo(routineTo) < 0)
-                    crossed.Add(name);
-            }
-
-            if (crossed.Count == 0)
-            {
-                Debug.Log($"{log_prefix}update: this SDK has no update routine for {from} -> {to} (Virtuademy > Update routines).");
-                return;
-            }
-
-            // Newest first: that is the order to run them when a project needs several (2026.6 before 2026.5, because
-            // the 2026.5 routine saves graphs that only the 2026.6 one makes readable). The name is the routine's
-            // target series, which is how UpdateRoutinesCli's -vdRoutine names it.
-            foreach (string name in crossed)
-            {
-                string target = name.Split(new[] { "->" }, StringSplitOptions.None)[1];
-                TryParseSeries(target, out var routineTo);
-                Debug.LogWarning($"{log_prefix}update: the update routine \"{name}\" must run next, from the menu Virtuademy > Update routines > {name}, " +
-                                 $"or from the command line: -executeMethod {update_routines_cli} -vdRoutine {routineTo.year}.{routineTo.minor} " +
-                                 "(launch it again while it exits 2). It changes the project's assets (back them up first); SetupCli does not run it.");
-            }
-
-            if (crossed.Count > 1)
-                Debug.LogWarning($"{log_prefix}update: run the routines in the order listed, newest first (-vdRoutine 2026.6 before 2026.5): " +
-                                 "the 2026.5 routine refuses to start while the 2026.6 one still has graphs to migrate.");
-        }
-
-        /// <summary>
-        /// Whether the project's Addressables are configured as the SDK expects; null when the SDK's
-        /// <c>AddressablesConfiguration</c> is not there to ask. Does not change anything.
-        /// </summary>
-        private static bool? ReadAddressablesConfigured(Type configuration = null)
-        {
-            configuration ??= FindAddressablesConfigurationType();
-            if (configuration == null)
-                return null;
-
-            return (bool?)configuration.GetProperty("IsConfigured", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-        }
-
-        private static bool ProjectSettingsConfigured(RenderPipelineAsset asset)
-            => CreatorKitSetupWindow.IsRenderPipelineConfigured(asset)
-               && CreatorKitSetupWindow.GetProjectSettingsStatus()
-               && CreatorKitSetupWindow.GetInputHandlingStatus()
-               && CreatorKitSetupWindow.GetMaxTextureSizeOverride();
-
-        /// <summary>
-        /// The registry, read once per launch from <see cref="registrySource"/>: the published URL,
-        /// or what <c>-vdSetupRegistry</c> names. Returns <see cref="ExitDone"/>, or the exit code
-        /// for a registry that cannot be read or holds no entries.
-        /// </summary>
-        private static int LoadRegistry(string step, out PackageRegistry[] registry)
-        {
-            registry = registryCache;
-            if (registry != null)
-                return ExitDone;
-
             try
             {
-                registry = ReadRegistry(registrySource);
+                LogReport();
             }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException or UnauthorizedAccessException)
+            catch (Exception ex)
             {
-                Debug.LogError($"{log_prefix}{step}: could not read the registry {registrySource}: {ex.Message}");
-                return ExitRegistryUnavailable;
+                Debug.LogWarning(log_prefix + "The report could not be produced: " + ex.Message);
             }
-
-            if (registry == null || registry.Length == 0)
-            {
-                Debug.LogError($"{log_prefix}{step}: the registry {registrySource} holds no entries.");
-                return ExitRegistryUnavailable;
-            }
-
-            registryCache = registry;
-            return ExitDone;
-        }
-
-        private static PackageRegistry[] ReadRegistry(string source)
-        {
-            // A local file, for testing a registry change before it is published.
-            if (File.Exists(source))
-                return JsonConvert.DeserializeObject<PackageRegistry[]>(File.ReadAllText(source));
-
-            // Anything that is not a URL was meant as a file: say so, rather than let HttpClient
-            // fail on a relative URI.
-            if (!source.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !source.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                throw new FileNotFoundException($"No such file: {Path.GetFullPath(source)}");
-
-            using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(60) };
-
-            // Waited for synchronously, so the whole round runs inside this call. The request is
-            // started with Task.Run so its continuations run on the thread pool: blocking the main
-            // thread on a task that needs the main thread to finish would deadlock.
-            string body = Task.Run(() => client.GetStringAsync(source)).GetAwaiter().GetResult();
-            return JsonConvert.DeserializeObject<PackageRegistry[]>(body);
-        }
-
-        /// <summary>The window's state when the project has one; never created here.</summary>
-        private static PackageManagerConfiguration FindConfiguration()
-        {
-            string configGuid = AssetDatabase.FindAssets("t:" + nameof(PackageManagerConfiguration)).FirstOrDefault();
-            return configGuid == null
-                ? null
-                : AssetDatabase.LoadAssetAtPath<PackageManagerConfiguration>(AssetDatabase.GUIDToAssetPath(configGuid));
-        }
-
-        /// <summary>
-        /// The window's state, loaded or created only once the step is going to write it, so a
-        /// refused run leaves no asset behind. The version is selected as the window's dropdown
-        /// selects it: SelectedVersion, and with it the package list, follows it.
-        /// </summary>
-        private static PackageManagerConfiguration PrepareConfiguration(PackageRegistry[] registry, string version)
-        {
-            PackageManagerConfiguration config = CreatorKitSetupWindow.LoadOrCreateConfiguration();
-            config.AllVersionsPackageRegistry = registry;
-            config.DisplayedReflectisVersion = version;
-            return config;
-        }
-
-        private static void RecordVersion(PackageManagerConfiguration config, PackageRegistry target)
-        {
-            config.CurrentInstallationVersion = target.ReflectisVersion;
-
-            // The window lists a prerelease only with Show pre-releases on. Without it, the window
-            // would open on a version its own list does not show.
-            if (target.Prerelease)
-                config.ShowPrereleases = true;
-
-            EditorUtility.SetDirty(config);
-            AssetDatabase.SaveAssetIfDirty(config);
-        }
-
-        private static bool IsRegistered(string packageName)
-            => UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().Any(package => package.name == packageName);
-
-        // Managed packages only, as the window counts them: a package of ours that no registry entry
-        // lists (one a creator added by hand) does not make the project "already installed".
-        private static List<string> RegisteredPackagesOfOurs(PackageRegistry[] registry)
-            => UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages()
-                .Select(package => package.name)
-                .Where(name => CreatorKitSetupWindow.IsManagedPackage(name, registry) && !CreatorKitSetupWindow.packages_to_exclude.Contains(name))
-                .ToList();
-
-        private static int NextInterpreterAttempt()
-        {
-            string path = Path.Combine(ProjectRoot, interpreter_attempts_file);
-            int attempt = 1;
-            if (File.Exists(path) && int.TryParse(File.ReadAllText(path).Trim(), out int previous))
-                attempt = previous + 1;
-
-            File.WriteAllText(path, attempt.ToString());
-            return attempt;
-        }
-
-        private static void ClearInterpreterAttempts()
-        {
-            string path = Path.Combine(ProjectRoot, interpreter_attempts_file);
-            if (File.Exists(path))
-                File.Delete(path);
         }
 
         /// <summary>
@@ -1129,10 +827,10 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         {
             CreatorKitSetupWindow.TryGetGitVersion(out string git);
             RenderPipelineAsset asset = CreatorKitSetupWindow.LoadDefaultRenderPipelineAsset();
-            bool hybridClr = IsRegistered(CreatorKitSetupWindow.hybridclr_package_name);
+            bool hybridClr = SetupSteps.IsRegistered(CreatorKitSetupWindow.hybridclr_package_name);
 
             // Found, never created: the check step must not change the project.
-            PackageManagerConfiguration config = FindConfiguration();
+            PackageManagerConfiguration config = SetupSteps.FindConfiguration();
             string recorded = config != null ? config.CurrentInstallationVersion : null;
 
             // The declared HybridCLR, and which git packages are ours, need the registry. Without it
@@ -1142,7 +840,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             PackageRegistry[] registry = null;
             if ((hybridClr && !string.IsNullOrEmpty(recorded)) || File.Exists(PackageLock.LockFilePath))
             {
-                registryRead = LoadRegistry("report", out registry) == ExitDone;
+                registryRead = SetupSteps.LoadRegistry("report", out registry).IsDone;
                 entry = registryRead ? registry.FirstOrDefault(candidate => candidate.ReflectisVersion == recorded) : null;
             }
 
@@ -1153,13 +851,16 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             // Null while the SDK is not there to ask: its own row says so, and this one does not
             // fail the check a second time.
-            bool? addressablesConfigured = ReadAddressablesConfigured();
+            bool? addressablesConfigured = SetupSteps.ReadAddressablesConfigured();
 
             bool interpreterReady = CreatorKitSetupWindow.IsInterpreterReady(entry, out string interpreterIssue);
             CreatorKitSetupWindow.TryGetDeclaredInterpreter(entry, out PackageDefinition declared);
             if (hybridClr && declared == null)
                 Debug.LogWarning(log_prefix + "The HybridCLR version was not checked against the registry: " +
                                  (registryRead ? $"Virtuademy {recorded} declares no valid interpreter." : "the registry could not be read or no version is recorded."));
+
+            // False when TextMesh Pro is not in the project: there is nothing to miss.
+            bool tmpEssentialsMissing = SetupSteps.TmpEssentialsMissing();
 
             var report = new
             {
@@ -1171,8 +872,10 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 inputHandlingBoth = CreatorKitSetupWindow.GetInputHandlingStatus(),
                 maxTextureSize1024 = CreatorKitSetupWindow.GetMaxTextureSizeOverride(),
                 recordedVersion = recorded,
-                sdkEnvironments = IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name),
+                sdkEnvironments = SetupSteps.IsRegistered(CreatorKitSetupWindow.sdk_environments_package_name),
                 scriptsCompile = !EditorUtility.scriptCompilationFailed,
+                scripting = SetupSteps.InterpreterInManifest() ? "csharp" : "vs",
+                environmentScripts = SetupSteps.CountEnvironmentScripts(),
                 hybridClr,
                 hybridClrInManifest = CreatorKitSetupWindow.ReadManifestDependency(CreatorKitSetupWindow.hybridclr_package_name),
                 hybridClrDeclared = declared != null ? CreatorKitSetupWindow.InterpreterReference(declared) : null,
@@ -1180,6 +883,9 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 interpreterReady,
                 interpreterIssue,
                 addressablesConfigured,
+                vsLibraryCurrent = SetupSteps.ReadVisualScriptingLibraryCurrent(),
+                tmpPresent = SetupSteps.IsTmpPresent(),
+                tmpEssentialsMissing,
                 stalePackages = stale?.Stale.Select(package => new
                 {
                     name = package.Name,
@@ -1199,6 +905,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                    && report.scriptsCompile
                    && (!hybridClr || interpreterReady)
                    && addressablesConfigured != false
+                   && !tmpEssentialsMissing
                    && (stale == null || stale.Stale.Count == 0);
         }
 
@@ -1219,6 +926,9 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             ExitProjectSettingsFailed => "project settings failed",
             ExitAddressablesFailed => "addressables configuration failed",
             ExitVisualScriptingFailed => "visual scripting library update failed",
+            ExitConfirmationNeeded => "a confirmation is missing",
+            ExitTmpEssentialsFailed => "TextMesh Pro essentials import failed",
+            ExitRunStepFailed => "a step of the run failed",
             _ => "unknown",
         };
 

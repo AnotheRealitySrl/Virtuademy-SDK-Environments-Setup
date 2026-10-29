@@ -7,9 +7,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
     /// <summary>
     /// Opens a window when the project is opened. When the project needs setup:
     /// Virtuademy-SDK-Environments is not installed, or one of the window's local checks fails
-    /// (see <see cref="CreatorKitSetupWindow.FindStartupIssue"/>), it is the setup window, which
-    /// opens its wizard on the first step that fails; the toggle at the foot of the window turns
-    /// that off. When nothing is wrong it is the <see cref="ReadmeWindow"/>, unless the person
+    /// (see <see cref="CreatorKitSetupWindow.FindStartupIssue"/>), it is the setup window: a project
+    /// that is not set up opens its Introduction (or the Connection page, when the person turned the
+    /// Introduction off), a project that is set up but has something to fix opens its status page.
+    /// The toggle at the foot of the window turns that off. When nothing is wrong it is the
+    /// <see cref="ReadmeWindow"/>, unless the person
     /// asked not to see it in this project (<see cref="SetupUserSettings.HideReadmeOnStartup"/>).
     ///
     /// [InitializeOnLoad] runs on every domain reload — each script change, each package

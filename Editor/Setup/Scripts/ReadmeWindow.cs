@@ -20,7 +20,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         private const string package_root = "Packages/com.anotherealitysrl.virtuademy-sdk-environments-setup";
         private const string style_sheet_path = package_root + "/Editor/Setup/Scripts/readme.uss";
 
-        [MenuItem("Virtuademy/Readme")]
+        [MenuItem("Virtuademy/Readme", false, 2)]
         public static void ShowWindow()
         {
             // The minimum size is set when the window is created, so a person's resize is not undone
@@ -63,15 +63,15 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 "nodes, or write C# scripts: they run through the interpreter, which the setup window installs on request."));
             scroll.Add(Step("3", "Build and publish",
                 "Open Virtuademy > Publish Environments, pick the scenes and platforms, press Build, then deploy to a world. " +
-                "Deploying needs a connection: import the configuration file from the Back Office and log in (the Connection step of the setup window)."));
+                "Deploying needs a connection: import the configuration file from the Back Office and log in (the Connection page of the setup window)."));
             scroll.Add(Step("4", "Test it",
                 "Open the world you deployed to from the platform and check it, on each platform you built for."));
 
             scroll.Add(Heading("Menu entries"));
             scroll.Add(MenuRow("Virtuademy > Setup project", "The setup window: checks this computer and project, installs and updates the SDK."));
             scroll.Add(MenuRow("Virtuademy > Publish Environments", "Build your scenes and deploy them to your worlds. SDK versions before 2026.7 call it Addressables management."));
-            scroll.Add(MenuRow("Virtuademy > Update routines", "One entry per platform version step. Run the one the release notes name after you move the project to a new version."));
-            scroll.Add(MenuRow("Virtuademy > Update VS Library", "Adds the Virtuademy nodes to the Visual Scripting node library."));
+            scroll.Add(MenuRow("Virtuademy > Update routines", "One entry per platform version step. The setup runs them when you move the project to a newer version; open one to see or redo its work."));
+            scroll.Add(MenuRow("Virtuademy > Advanced", "Tools for those who drive each step by hand: all the setup checks on one page, the update of the Visual Scripting library, the IDs of the scene's placeholders, the Addressables settings the build relies on."));
             scroll.Add(MenuRow("Virtuademy > Readme", "This page."));
             scroll.Add(Paragraph("Which entries exist depends on the SDK version installed."));
 
