@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -80,6 +81,12 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private static bool running;
 
+        /// <summary>A check is going (the lookups are in flight): <see cref="PackageLock.ForgetRemoteAnswers"/> leaves the answers alone then.</summary>
+        internal static bool IsRunning => running;
+
+        /// <summary>The packages the last check unpinned, and so reloaded: empty when none moved or nothing was changed.</summary>
+        internal static IReadOnlyList<string> LastMoved { get; private set; } = new string[0];
+
         // Per project (productGUID) and per machine, like the window's startup toggle: whether the editor
         // may move the project's packages by itself is a personal setting, not something to commit.
         private static string EnabledPrefKey => "Virtuademy.SDK.Environments.Setup.AutoUpdatePackages." + PlayerSettings.productGUID;
@@ -128,6 +135,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             }
 
             running = true;
+            LastMoved = new string[0];
             try
             {
                 if (!File.Exists(PackageLock.LockFilePath))
@@ -171,6 +179,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                               $"{ShortCommit(package.RemoteCommit)} ({package.Reference ?? "the default branch"}).");
                 }
 
+                LastMoved = stale.Stale.Select(package => package.Name).ToList();
                 var unpinned = PackageLock.Unpin(registry, stale.Stale.Select(package => package.Name), includeInstaller: true);
                 Debug.Log($"[Setup] Packages: unpinned {unpinned.Count} of {stale.Stale.Count} moved package(s) from packages-lock.json; " +
                           "resolving. Each one is cloned again, so give it a moment. Turn this off in Virtuademy > Setup project.");
@@ -187,6 +196,26 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             {
                 running = false;
             }
+        }
+
+        /// <summary>
+        /// The same check, run now because the person asked (the status page's "Reload packages"): it ignores the session and opt-out
+        /// guards, asks the remotes again, and says in a sentence what it did. Compares commit SHAs, never versions. Call on the main thread.
+        /// </summary>
+        internal static async Task<string> CheckNowAsync()
+        {
+            PackageLock.ForgetRemoteAnswers();
+            Outcome outcome = await CheckAsync(force: true);
+
+            return outcome switch
+            {
+                Outcome.NothingMoved => "All up to date.",
+                Outcome.Updated => $"Reloaded: {string.Join(", ", LastMoved)}. Unity is resolving them now.",
+                Outcome.NoLockFile => "This project has no packages-lock.json yet, so nothing is pinned.",
+                Outcome.RegistryUnavailable => "The list of Virtuademy versions could not be read, so the packages were not checked.",
+                Outcome.RemotesUnavailable => "Some remotes could not be reached (no network, or no access), so nothing was changed.",
+                _ => "A check is already running.",
+            };
         }
 
         private static async Task<PackageRegistry[]> ReadRegistryAsync()

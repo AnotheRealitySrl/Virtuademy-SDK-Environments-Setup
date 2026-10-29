@@ -2,6 +2,126 @@
 
 All notable changes to `com.anotherealitysrl.virtuademy-sdk-environments-setup`.
 
+## Unreleased
+
+### Added
+
+- **The setup window is a wizard of six pages.** **Introduction** (optional: three rows, a reminder to back up or commit the
+  project, "Don't show this introduction again"), **Connection**, **Choices**, **Summary**, **Run** and **Project status**, one at a time, with
+  **Back** and the main action in a bar at the bottom. The pages only start the work and show it; the work is the setup run's
+  (below). **Development mode (internal testing)**, at the foot, is one switch for the whole setup: it lists the development
+  version and adds the details of the Summary. It is the long page's **Show pre-releases**, saved in the setup configuration
+  asset. The whole page as before (nothing the window did is gone) has its own menu entry, **Virtuademy ▸ Advanced ▸ All setup
+  checks**, with **Back to the guided setup** at its top: it is out of the wizard, which no longer offers it.
+  - **Connection** is optional at every point (**Connect later**). It opens the Back Office (`bo.virtuademy.io`, or another one you
+    type, saved per project and user), lists the connections of this computer (organization, environment, platform version,
+    account, a warning when the app is not one environments can be published to) with **Log in** and **Log out**, and **Add an
+    organization** imports the file from the Back Office and logs in. The connections are the SDK's, so the page reaches them
+    through the SDK's `SetupBridge` by reflection (SDK 2026.7.0 on); without it the list is read from the SDK's status file and
+    the page says what is not available. On a project that has no SDK yet, **Choose the file...** and **Log in** first offer to install
+    just SDK-Core and what it needs; after Unity has recompiled, the file picker or the login opens by itself, so the file is chosen
+    once. Organizations show their name alone; a sandbox or prep connection carries a coloured chip (blue Sandbox, orange Prep), as
+    in Publish Environments. While only the development version has the connection
+    support for this Unity, the page says that development mode makes **Add an organization** and **Log in** available.
+    Removing a connection stays in Publish Environments.
+  - **Choices**: the Virtuademy version (the one your connections run is the default and marked recommended, else the latest
+    release; the development version only in development mode), which Unity it needs (another Unity blocks the start), an upgrade note or, for an older version, a
+    downgrade warning with a confirmation, and Visual Scripting only or with C# scripts. Only versions from 2026.6 on are offered:
+    they are the ones the setup run can install.
+  - **Summary** ("Ready to set up") is the confirmation: the choices (a grid in a card with a blue edge: each name in bold, its value
+    beside it, a "Development" chip on the development version, and a grey note on whether it updates or goes back), what the setup will do, what cannot be undone, and **Start
+    setup**. Git and the editor modules show only when one is missing. Development mode adds each step's detail, what is already
+    done, the checks that pass and the Unity the version needs.
+  - **Run**: the step you are at and the percentage, a progress bar, the steps with what each did, **Stop after this step**, and a
+    warning before the two steps that block the editor. A failure stays on the page with the reason and **Try again**.
+  - **Project status** is the result of a run and the home of a project that is set up: a card laid out like the Summary's choices
+    (the name in bold, the value beside it) with the Virtuademy version (**Change
+    version**), the packages (**Reload packages** runs the check of the editor-start update now: it compares commits, never
+    versions, and says what it reloaded or that all are up to date), the scripting (**Add C# scripts** or **Remove C# scripts**, both
+    confirmed on the Summary at the installed version), the connections
+    (**Manage**), and the checks that fail, each with **Fix** (all of them in development mode): this computer, project settings, Addressables, TextMesh Pro's Essential
+    Resources, the interpreter, and a compile failure. **Restart now** applies Active Input Handling when the run changed it.
+    **Run setup again** opens the Summary of the whole setup at the installed version.
+- **A Readme window, shown when the project opens and nothing needs setup.** **Virtuademy ▸ Readme** opens
+  it at any time: what the SDK is, the first steps (scene, placeholders, build and publish), the menu entries
+  and links to the documentation. **Do not show this when the project opens** is saved per user and per
+  project, in `UserSettings/Virtuademy/setup.json` (not versioned).
+- **The setup run (`SetupRun`): an engine that runs every step of the setup inside the editor.** It does, one at a
+  time and by itself, what the command line does: project settings, the SDK packages at a chosen version (install,
+  update or change; a downgrade needs a confirmation, a version for another Unity is refused), the wait for the
+  compilation, the update routines between the old version and the new one, the interpreter (installed with C# scripts; removed when
+  a project that has it is set up with Visual Scripting only, after a red warning and a tick when it has C# scripts), the
+  Addressables configuration, the Visual Scripting nodes, TextMesh Pro's Essential Resources when missing, a read of the
+  computer's connections, and the editor restart, which is never automatic. It survives the domain reloads those steps
+  cause (state in `UserSettings/Virtuademy/setup-run.json`), reports progress from the steps' weights and raises
+  `Changed` on the main thread. `Plan` shows what a run would do and refuses a choice that cannot run. `Start` can limit a run
+  to some steps (the status page's **Fix**). The version a run starts from is the recorded one only when the SDK is installed:
+  the window records its default for a project that has none, and that is not what is installed. Removing the interpreter from a
+  project that has C# scripts needs `SetupChoices.AllowScriptRemoval` (the Summary's tick): `Start` refuses it otherwise.
+- **The whole setup in one command line launch: `SetupCli -vdSetupSteps run`.** It runs the setup run's engine in batch mode, with
+  `-vdSetupVersion` and `-vdSetupScripting vs` or `csharp` (both required: the run never removes or keeps the interpreter by
+  default), and keeps the editor open across the run's domain reloads until it ends: one launch instead of three or four, and the
+  update routines, the Visual Scripting nodes and TextMesh Pro's essentials included. The Summary's confirmations are options:
+  `-vdAllowDowngrade` and `-vdAllowScriptRemoval`; without the one a run needs, nothing changes and it exits `21`. It ends with a
+  `[SetupCli] RUN` JSON line (the steps with state and detail, the step that failed, `restartPending`) and exits `0`, or `23` when a
+  step failed. `-quit` is refused, and a run still going after 90 minutes is ended. `-vdSetupSteps plan` changes nothing and logs
+  the Summary as a `[SetupCli] PLAN` JSON line: the steps, what cannot be undone, `confirmationsNeeded` and `startable`.
+- **`SetupCli`: the rest of what the wizard does.** `-vdSetupScripting vs` makes the `interpreter` step remove the interpreter (with
+  `-vdAllowScriptRemoval` when the project has C# scripts); a `tmp` step imports TextMesh Pro's Essential Resources when they are
+  missing (opt-in; the editor stays open until the import ends); the `update` step needs `-vdAllowDowngrade` to go back to an older
+  version (behaviour change: it went back without asking); the `vslibrary` step leaves a library that has the SDK's types alone.
+  The REPORT has `scripting`, `environmentScripts`, `vsLibraryCurrent`, `tmpPresent` and `tmpEssentialsMissing`, and `check` exits `3`
+  when the essentials are missing, as the status page counts them. New exit codes: `21` a confirmation is missing, `22` the TextMesh
+  Pro import failed, `23` a step of `run` failed.
+
+### Changed
+
+- **The setup run says before it starts what cannot be undone.** The Summary page lists, above **Start setup**, what this run will
+  really do of: moving Virtuademy to another version (the packages the new one does not list are removed), the update routines (they
+  rewrite scripts and assets), and the Addressables reset (only for a project whose Addressables are not configured). Nothing when
+  there is none. Before the update routines close the open scenes, a scene with unsaved changes gets its
+  own dialog: **Save and continue**, **Continue without saving** (the changes are lost, the scenes are reopened as they are on disk) or
+  **Stop the setup**, which ends the run before the routines change anything. A project's types in Visual Scripting's node library are
+  kept: the library setup (the **Visual Scripting nodes** step and `SetupCli`'s `vslibrary`) puts back the ones its reset dropped, and
+  the step is skipped when the library has the SDK's types already. On a new project, where Visual Scripting has not started yet, the
+  step first marks Visual Scripting as used, as opening a graph does, so that its options can be read.
+- **The editor restart stays due until it happens.** Active Input Handling changed in this editor session is a `SessionState` flag, no
+  longer a field of the run: a later run, **Try again** or a **Fix** no longer drops it, and the status page keeps **Restart now** (and
+  "almost ready") until the editor has restarted.
+- **A project with Virtuademy packages from before 2026.6 is no longer half changed.** The packages step fails up front, before any step runs,
+  and points to the update documentation. `preparedPackages` (the packages the Connection page installed to reach the connections) is
+  documented, and cleared once the run has installed the SDK. A `setup-run.json` of another `Format` is ignored.
+- **The Virtuademy menu is ordered for creators.** **Setup project** (priority 0) and **Readme** (2) sit with the SDK's **Publish
+  Environments** (1) at the top; the SDK's **Update routines** and **Advanced** submenus follow, each after a separator. **All setup
+  checks** is in Advanced (40), beside the SDK's Visual Scripting library update, which moved there in 2026.7. The Readme's list of
+  menu entries and the setup's messages name the new places, and say the old one for an SDK before 2026.7.
+- **Smaller.** *All setup checks* is refused while a run is going. The Run, Connection and Summary pages no longer come back empty
+  after a domain reload: the signature of what they last drew, carried across the reload with the window's other private fields, is
+  reset when the pages are built again. A step skipped because it had nothing to do is green on the Run page ("Not needed: ..."). The Summary
+  and Choices pages no longer freeze the editor ("Hold on", every few seconds, in a project that has the SDK): the plan asked whether
+  Visual Scripting's library has the SDK's types, and the SDK's collector resolves each type name by scanning every assembly, about
+  4 s a time. The setup now reads the same names and resolves them in one pass over the domain's types (the same 21 types, in the
+  same order, in about 1 s once per domain), and keeps the answer until the library's own setup runs or the domain reloads. A failing compile is no longer let through when the update routines are
+  skipped. The install of SDK-Core from the Connection page saves its pending action only after the manifest was written, and gives up with a message when
+  SDK-Core never resolves. The few messages that told the command line's way to a wizard run ("Launch again", `-vdSetupSteps`, "run the
+  sdk step") are worded for the wizard (the command line's text is unchanged). The Choices page and the package waits no longer scan the
+  project on every tick; the `vs-nodes` attempt counter is saved before the call; **Reload packages** no longer forgets the answers of a
+  check that is running; the introduction says Unity restarts only if a setting needs it, and only when you click.
+- **`SetupCli`'s steps moved to `SetupSteps`**, which the setup run calls too, so the command line and the
+  engine run the same code. The command line keeps its arguments, its REPORT and its exit codes, and adds to them (above).
+- **Project settings: Active Input Handling must be Both.** A new row in the Project settings group (and in the
+  status page): Player Settings > Active Input Handling is **Both**, as in the Virtuademy player, where environment
+  scripts may read the old `Input` class and the SDK uses the Input System package. **Configure** sets it and offers
+  to restart the editor, because Unity applies it only when the editor starts; `SetupCli`'s `configure` step sets
+  it too, and its report has `inputHandlingBoth`. Until now a new project met the Input System package's own
+  dialog ("native platform backend not enabled", Enable and restart) in the middle of the SDK install, and a
+  project on one input system only lost the other in Play mode (on the new one only, the old `Input` class throws).
+- **Startup.** With a problem the window opens, as it did, unless **Open this window when the project opens and needs setup** is
+  off: a project that is not set up opens the introduction (the Connection page when the introduction is turned off), one that
+  is set up opens its status. The startup check also looks at the SDK's Addressables configuration and at TextMesh Pro's
+  Essential Resources now. With no problem the Readme opens, unless it was turned off for the project. Still once per editor
+  session and never in batch mode. `SetupCli` and the automatic package update are unchanged.
+
 ## v2.0.0
 
 ### Added to this release on 2026-10-14 (tag moved)

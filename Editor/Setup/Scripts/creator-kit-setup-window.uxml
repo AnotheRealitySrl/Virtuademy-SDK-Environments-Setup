@@ -54,6 +54,10 @@
                             <engine:VisualElement name="project-settings-configuration-check" class="settings-item-green-icon" />
                             <engine:Label text="Project settings configuration" name="Label" />
                         </engine:VisualElement>
+                        <engine:VisualElement name="project-settings-input-handling" class="settings-item">
+                            <engine:VisualElement name="project-settings-input-handling-check" class="settings-item-green-icon" />
+                            <engine:Label text="Active Input Handling: Both" name="Label" tooltip="Player Settings &gt; Active Input Handling. The Virtuademy player reads both the Input Manager and the Input System package. Configure sets it; Unity applies it when the editor starts again." />
+                        </engine:VisualElement>
                         <engine:VisualElement name="project-settings-max-texture-size" class="settings-item">
                             <engine:VisualElement name="project-settings-max-texture-size-check" class="settings-item-green-icon" />
                             <engine:Label text="Configure max texture size" name="Label" />

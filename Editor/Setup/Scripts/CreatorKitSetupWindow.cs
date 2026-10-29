@@ -27,7 +27,7 @@ using UnityEngine.UIElements;
 
 namespace Virtuademy.SDK.Environments.Setup.Editor
 {
-    public class CreatorKitSetupWindow : EditorWindow
+    public partial class CreatorKitSetupWindow : EditorWindow
     {
         [Serializable]
         public class ProjectConfiguration
@@ -61,9 +61,10 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             };
 
 
-            [CreateProperty] public bool ProjectSettingsOk => RenderPipelineURP && PlayerSettings && MaxTextureSizeOverride;
+            [CreateProperty] public bool ProjectSettingsOk => RenderPipelineURP && PlayerSettings && InputHandlingBoth && MaxTextureSizeOverride;
             [CreateProperty] public bool RenderPipelineURP { get; set; }
             [CreateProperty] public bool PlayerSettings { get; set; }
+            [CreateProperty] public bool InputHandlingBoth { get; set; }
             [CreateProperty] public bool MaxTextureSizeOverride { get; set; }
         }
 
@@ -199,9 +200,11 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         /// <summary>
         /// Why the project needs this window, or null when it does not: SDK-Environments missing,
-        /// or one of the window's local checks failing. Left to the window: the Unity version,
-        /// which is compared against the registry and so needs the network, and the interpreter,
-        /// which a project may legitimately not have set up yet.
+        /// or one of the window's local checks failing (git, the editor modules, the project
+        /// settings, and, once the SDK is in, its Addressables configuration and TextMesh Pro's
+        /// Essential Resources: the checks of the status page). Left to the window: the Unity
+        /// version, which is compared against the registry and so needs the network, and the
+        /// interpreter, which a project may legitimately not have set up yet.
         /// </summary>
         internal static string FindStartupIssue()
         {
@@ -216,8 +219,14 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             if (GetInstalledModules().ContainsValue(false))
                 return "some editor modules (Android, iOS, WebGL, Windows) are missing.";
 
-            if (!IsRenderPipelineConfigured(LoadDefaultRenderPipelineAsset()) || !GetProjectSettingsStatus() || !GetMaxTextureSizeOverride())
+            if (!IsRenderPipelineConfigured(LoadDefaultRenderPipelineAsset()) || !GetProjectSettingsStatus() || !GetInputHandlingStatus() || !GetMaxTextureSizeOverride())
                 return "the project settings are not configured.";
+
+            if (SetupSteps.ReadAddressablesConfigured() == false)
+                return "the Addressables are not configured.";
+
+            if (SetupSteps.TmpEssentialsMissing())
+                return "TextMesh Pro's Essential Resources are missing.";
 
             return null;
         }
@@ -227,11 +236,33 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         internal static RenderPipelineAsset LoadDefaultRenderPipelineAsset()
             => AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(AssetDatabase.GUIDToAssetPath(render_pipeline_asset_guid));
 
-        [MenuItem("Virtuademy/Setup project")]
+        /// <summary>
+        /// Opens the setup window on the pages of the wizard. It picks its page by itself, once per
+        /// editor session: the Introduction for a project that is not set up, the project status for
+        /// one that is. See <c>CreatorKitSetupWindow.Wizard.cs</c>.
+        /// </summary>
+        // First in the Virtuademy menu, then Publish Environments (the SDK's, 1) and the Readme (2); after them the SDK's Update routines
+        // (20-22) and Advanced (40-43). Unity draws a separator before a submenu whose priority is more than 10 above the previous
+        // item, and none before an item that follows a submenu: so the items come first and the submenus after.
+        [MenuItem("Virtuademy/Setup project", false, 0)]
         public static void ShowWindow()
         {
             CreatorKitSetupWindow wnd = GetWindow<CreatorKitSetupWindow>();
             wnd.titleContent = new GUIContent("Setup project");
+            wnd.SetShowAllChecks(false);
+        }
+
+        /// <summary>
+        /// Opens the setup window on the long page: every check and every action on one page, as
+        /// before the wizard, for those who want to drive each step by hand. Not while a setup run
+        /// is going.
+        /// </summary>
+        [MenuItem("Virtuademy/Advanced/All setup checks", false, 40)]
+        public static void ShowAllChecksWindow()
+        {
+            CreatorKitSetupWindow wnd = GetWindow<CreatorKitSetupWindow>();
+            wnd.titleContent = new GUIContent("Setup project");
+            wnd.SetShowAllChecks(true);
         }
 
         public void CreateGUI()
@@ -252,6 +283,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             root.Add(labelFromUXML);
 
             SetupHeader();
+            SetupWizard();
 
             Toggle showOnStartupToggle = root.Q<Toggle>("show-on-startup-toggle");
             showOnStartupToggle.SetValueWithoutNotify(ShowOnStartup);
@@ -290,6 +322,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
         private void OnDestroy()
         {
+            packageManagerConfig?.OnDisplayedVersionChanged.RemoveListener(InstantiatePackagesInPackageList);
             SaveAsset(packageManagerConfig);
         }
 
@@ -360,6 +393,10 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 // on, so failing to get it must not take the rest of the window down with it.
                 breakingChangesSolverDictionary = await LoadBreakingChangesIndex(client);
 
+                // The configuration asset outlives windows and LoadData runs again on every refresh:
+                // without the removal each call adds another listener, and one from a closed window
+                // would still fire.
+                packageManagerConfig.OnDisplayedVersionChanged.RemoveListener(InstantiatePackagesInPackageList);
                 packageManagerConfig.OnDisplayedVersionChanged.AddListener(InstantiatePackagesInPackageList);
 
                 UpdateAvailableVersions();
@@ -406,6 +443,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 SaveAsset(packageManagerConfig);
 
                 HideLoadError();
+                OnWizardDataLoaded();
                 setupCompleted = true;
                 return true;
             }
@@ -473,16 +511,17 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             root.Q<Label>("load-error-text").text = message;
             root.Q<VisualElement>("load-error").style.display = DisplayStyle.Flex;
             // Both sections are computed against the registry: without it they would show
-            // placeholders and buttons that act on an empty list.
-            root.Q<VisualElement>("project-settings").style.display = DisplayStyle.None;
-            root.Q<VisualElement>("package-manager").style.display = DisplayStyle.None;
+            // placeholders and buttons that act on an empty list. ApplyView hides them (and the
+            // wizard's own parts) while the error stands.
+            loadFailed = true;
+            ApplyView();
         }
 
         private void HideLoadError()
         {
             root.Q<VisualElement>("load-error").style.display = DisplayStyle.None;
-            root.Q<VisualElement>("project-settings").style.display = DisplayStyle.Flex;
-            root.Q<VisualElement>("package-manager").style.display = DisplayStyle.Flex;
+            loadFailed = false;
+            ApplyView();
         }
 
 
@@ -500,6 +539,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
                 { ("project-settings-editor-modules-check", nameof(projectConfig.AllEditorModulesInstalled)) },
                 { ("project-settings-urp-check", nameof(projectConfig.RenderPipelineURP)) },
                 { ("project-settings-configuration-check", nameof(projectConfig.PlayerSettings)) },
+                { ("project-settings-input-handling-check", nameof(projectConfig.InputHandlingBoth)) },
                 { ("project-settings-max-texture-size-check", nameof(projectConfig.MaxTextureSizeOverride)) },
                 { ("Interpreter-settings-instance-check", nameof(projectConfig.IsHybridCLRInstalled)) },
                 { ("Interpreter-settings-folder-check", nameof(projectConfig.HybridCLRAssemblyReady)) },
@@ -682,7 +722,13 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             showPrereleaseToggle.RegisterValueChangedCallback(evt =>
             {
                 // Written here as well as by the binding, so the list is filtered on the new value
-                // whichever of the two runs first.
+                // whichever of the two runs first. It is the wizard's Development mode too.
+                if (wizardBuilt)
+                {
+                    SetDevelopmentMode(evt.newValue);
+                    return;
+                }
+
                 packageManagerConfig.ShowPrereleases = evt.newValue;
                 UpdateAvailableVersions();
             });
@@ -894,6 +940,7 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
         {
             projectConfig.RenderPipelineURP = GetURPConfigurationStatus();
             projectConfig.PlayerSettings = GetProjectSettingsStatus();
+            projectConfig.InputHandlingBoth = GetInputHandlingStatus();
             projectConfig.MaxTextureSizeOverride = GetMaxTextureSizeOverride();
         }
 
@@ -1070,15 +1117,68 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
             return EditorUserBuildSettings.overrideMaxTextureSize == 1024;
         }
 
-        private void ConfigureProjectSettings()
+        // Player Settings > Active Input Handling, as ProjectSettings.asset stores it: 0 the Input Manager (old),
+        // 1 the Input System package (new), 2 both. Unity has no public API for it.
+        private const string active_input_handler_property = "activeInputHandler";
+        private const int active_input_handler_both = 2;
+
+        private static SerializedProperty ActiveInputHandler(out SerializedObject playerSettings)
         {
-            ApplyProjectSettings(renderPipelineAsset);
-            CheckProjectSettings();
+            playerSettings = new SerializedObject(Unsupported.GetSerializedAssetInterfaceSingleton("PlayerSettings"));
+            return playerSettings.FindProperty(active_input_handler_property);
         }
 
-        /// <summary>What the Configure button applies: URP, the API compatibility level and the
-        /// max texture size override.</summary>
-        internal static void ApplyProjectSettings(RenderPipelineAsset asset)
+        /// <summary>
+        /// Active Input Handling is "Both", as in the Virtuademy player: environment scripts may read the old
+        /// <c>Input</c> class and the SDK uses the Input System package, so a project on one of the two breaks the
+        /// other in Play mode. Without it the Input System package also stops the SDK install with a dialog that asks
+        /// to restart the editor. True when the setting cannot be read: a check that cannot run must not block.
+        /// </summary>
+        internal static bool GetInputHandlingStatus()
+        {
+            SerializedProperty property = ActiveInputHandler(out _);
+            return property == null || property.intValue == active_input_handler_both;
+        }
+
+        // Set when Active Input Handling was changed in this editor session. SessionState survives the domain
+        // reloads and not a restart, which is exactly when the setting starts to apply: whatever ran since (another
+        // setup run, a Fix) the editor still has to restart once.
+        private const string input_handling_changed_key = "Virtuademy.SDK.Environments.Setup.InputHandlingChanged";
+
+        /// <summary>Active Input Handling was changed in this editor session, so the editor has to restart for it to apply.</summary>
+        internal static bool InputHandlingChangedThisSession => SessionState.GetBool(input_handling_changed_key, false);
+
+        /// <summary>Sets Active Input Handling to Both. True when it changed: Unity applies it when the editor
+        /// starts again.</summary>
+        private static bool ApplyInputHandling()
+        {
+            SerializedProperty property = ActiveInputHandler(out SerializedObject playerSettings);
+            if (property == null || property.intValue == active_input_handler_both)
+                return false;
+
+            property.intValue = active_input_handler_both;
+            playerSettings.ApplyModifiedPropertiesWithoutUndo();
+            SessionState.SetBool(input_handling_changed_key, true);
+            return true;
+        }
+
+        private void ConfigureProjectSettings()
+        {
+            bool restart = ApplyProjectSettings(renderPipelineAsset);
+            CheckProjectSettings();
+
+            if (restart && EditorUtility.DisplayDialog("Restart the editor",
+                    "Active Input Handling is now \"Both\". Unity applies it when the editor starts again.\n\nRestart the editor now?",
+                    "Restart", "Later"))
+            {
+                EditorApplication.OpenProject(Directory.GetCurrentDirectory());
+            }
+        }
+
+        /// <summary>What the Configure button applies: URP, the API compatibility level, Active Input
+        /// Handling (Both) and the max texture size override. True when the editor has to restart for
+        /// the input handling to apply.</summary>
+        internal static bool ApplyProjectSettings(RenderPipelineAsset asset)
         {
             // URP configuration
             GraphicsSettings.defaultRenderPipeline = asset;
@@ -1086,12 +1186,14 @@ namespace Virtuademy.SDK.Environments.Setup.Editor
 
             // Project settings configuration
             PlayerSettings.SetApiCompatibilityLevel(NamedBuildTarget.Standalone, ApiCompatibilityLevel.NET_Unity_4_8);
+            bool inputHandlingChanged = ApplyInputHandling();
 
             // Max texture size override
             EditorUserBuildSettings.overrideMaxTextureSize = 1024;
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+            return inputHandlingChanged;
         }
 
         private void ConfigureInterpreterSettings()
